@@ -45,6 +45,8 @@
     <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
 
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
@@ -98,10 +100,11 @@
                     
                 });
             </script>
-            <div class="flex-grow w-full">
+            <div class="flex-grow">
+            {{-- <div class="flex-grow w-full"> --}}
                 {{ $slot }}
             </div>
-            <aside id="chat-area" class="bg-white  border border-gray-300 w-[35%]" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);">
+            <aside id="chat-area" class="bg-white  border border-gray-300 w-[50%]" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);">
                 <livewire:chat-component />
             </aside>
         </div>
@@ -148,6 +151,21 @@
     @stack('scripts')
 
     @livewireScripts
+
+    <script>
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('tweet-posted', (data) => {
+                Toastify({
+                    text: data.message,
+                    duration: 4000,
+                    gravity: 'top',
+                    position: 'right',
+                    backgroundColor: '#2563eb',
+                    stopOnFocus: true,
+                }).showToast();
+            });
+        });
+    </script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {

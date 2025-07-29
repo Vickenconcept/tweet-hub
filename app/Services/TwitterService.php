@@ -95,13 +95,16 @@ class TwitterService
     }
 
     /**
-     * Create a new tweet.
+     * Create a new tweet. Optionally as a reply (for threads).
      */
-    public function createTweet($text, $mediaIds = [])
+    public function createTweet($text, $mediaIds = [], $inReplyToTweetId = null)
     {
         $data = ['text' => $text];
         if (!empty($mediaIds)) {
             $data['media'] = ['media_ids' => $mediaIds];
+        }
+        if ($inReplyToTweetId) {
+            $data['reply'] = ['in_reply_to_tweet_id' => $inReplyToTweetId];
         }
         return $this->client->tweet()->create()->performRequest($data);
     }
@@ -113,6 +116,16 @@ class TwitterService
     {
         $file_data = base64_encode(file_get_contents($file));
         return $this->client->uploadMedia()->upload($file_data);
+    }
+
+    /**
+     * Upload a local file to Twitter and return the media ID.
+     */
+    public function uploadLocalMedia($localPath)
+    {
+        $file_data = base64_encode(file_get_contents($localPath));
+        $media_info = $this->client->uploadMedia()->upload($file_data);
+        return isset($media_info['media_id']) ? (string)$media_info['media_id'] : null;
     }
 
     // Tweet/Quotes endpoints
