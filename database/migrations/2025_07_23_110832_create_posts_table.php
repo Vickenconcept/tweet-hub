@@ -16,11 +16,12 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->text('content');
             $table->json('media')->nullable();
+            $table->string('twitter_post_id')->nullable();
             $table->unsignedBigInteger('in_reply_to_post_id')->nullable();
             $table->foreign('in_reply_to_post_id')->references('id')->on('posts')->onDelete('cascade');
             $table->timestamp('scheduled_at')->nullable();
             $table->timestamp('sent_at')->nullable();
-            $table->enum('status', ['draft', 'scheduled', 'sent', 'failed'])->default('draft');
+            $table->enum('status', ['draft', 'scheduled','processing' , 'sent', 'failed'])->default('draft');
             $table->timestamps();
         });
     }

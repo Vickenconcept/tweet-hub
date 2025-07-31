@@ -120,7 +120,8 @@ class ChatComponent extends Component
 
     public function schedulePost()
     {
-        if (empty(trim($this->message))) {
+        // Check if we have thread messages or a current message
+        if (empty($this->threadMessages) && empty(trim($this->message))) {
             return;
         }
 
@@ -134,35 +135,55 @@ class ChatComponent extends Component
             return;
         }
 
-        // Extract image codes
-        $media = [];
-        if (preg_match_all('/\[img:([a-zA-Z0-9]+)\]/', $this->message, $matches)) {
-            $media = $matches[1];
-            // Remove image codes from content
-            $content = preg_replace('/\[img:([a-zA-Z0-9]+)\]/', '', $this->message);
-        } else {
-            $content = $this->message;
+        // Prepare messages array
+        $messages = $this->threadMessages;
+        if (!empty(trim($this->message))) {
+            $messages[] = $this->message;
         }
 
-        // Create scheduled post
-        Post::create([
-            'user_id' => $user->id,
-            'content' => trim($content),
-            'media' => $media,
-            'scheduled_at' => $this->scheduledDateTime,
-            'status' => 'scheduled'
-        ]);
+        $isThread = count($messages) > 1;
+        $prevLocalPostId = null;
+
+        // Schedule each message in the thread
+        foreach ($messages as $index => $part) {
+            $part = trim($part);
+            if ($part === '') continue;
+
+            // Extract image codes
+            $media = [];
+            if (preg_match_all('/\[img:([a-zA-Z0-9]+)\]/', $part, $matches)) {
+                $media = $matches[1];
+                // Remove image codes from content
+                $part = preg_replace('/\[img:([a-zA-Z0-9]+)\]/', '', $part);
+            }
+
+            // Create scheduled post
+            $post = Post::create([
+                'user_id' => $user->id,
+                'content' => trim($part),
+                'media' => $media,
+                'in_reply_to_post_id' => $isThread && $prevLocalPostId ? $prevLocalPostId : null,
+                'scheduled_at' => $this->scheduledDateTime,
+                'status' => 'scheduled'
+            ]);
+
+            // Store the local post ID for the next iteration
+            $prevLocalPostId = $post->id;
+        }
 
         $this->message = '';
+        $this->threadMessages = [];
         $this->scheduledDateTime = '';
         $this->showSchedulePicker = false;
-        $this->successMessage = 'Post scheduled successfully!';
+        $this->threadStarted = false;
+        $this->successMessage = $isThread ? 'Thread scheduled successfully!' : 'Post scheduled successfully!';
         
         if ($this->activeTab === 'scheduled') {
             $this->loadScheduledPosts();
         }
 
         $this->dispatch('post-scheduled');
+        $this->dispatch('thread-state-updated', ['threadStarted' => false]);
     }
 
     public function editScheduledPost($id)
@@ -325,6 +346,7 @@ class ChatComponent extends Component
 
         $twitter = new TwitterService($settings);
         $prevTweetId = null;
+        $prevLocalPostId = null;
         $isThread = count($messages) > 1;
         $threadStarted = false;
 
@@ -361,15 +383,18 @@ class ChatComponent extends Component
                     $prevTweetId = $response->data->id;
                     
                     // Save the post to database
-                    Post::create([
+                    $post = Post::create([
                         'user_id' => $user->id,
                         'content' => $part,
                         'media' => $mediaCodes,
                         'twitter_post_id' => $response->data->id,
-                        'in_reply_to_post_id' => $isThread && $threadStarted ? $prevTweetId : null,
+                        'in_reply_to_post_id' => $isThread && $threadStarted ? $prevLocalPostId : null,
                         'status' => 'sent',
                         'sent_at' => now(),
                     ]);
+                    
+                    // Store the local post ID for the next iteration
+                    $prevLocalPostId = $post->id;
                 }
                 
                 if ($isThread && !$threadStarted) {

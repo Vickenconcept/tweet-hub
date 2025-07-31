@@ -10,6 +10,7 @@ class Post extends Model
         'user_id',
         'content',
         'media',
+        'twitter_post_id',
         'in_reply_to_post_id',
         'scheduled_at',
         'sent_at',
