@@ -372,6 +372,14 @@ class ChatComponent extends Component
                 $part = preg_replace('/\[img:([a-zA-Z0-9]+)\]/', '', $part);
             }
 
+            // Check character limit and truncate if necessary
+            $charCount = mb_strlen($part, 'UTF-8');
+            if ($charCount > 280) {
+                $originalPart = $part;
+                $part = $twitter->truncateForTwitter($part);
+                $this->errorMessage = "Tweet part was too long ({$charCount} chars) and has been truncated to fit Twitter's 280 character limit.";
+            }
+
             try {
                 if ($isThread && $prevTweetId) {
                     $response = $twitter->createTweet($part, $mediaIds, $prevTweetId);

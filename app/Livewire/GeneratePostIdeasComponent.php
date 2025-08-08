@@ -51,7 +51,7 @@ class GeneratePostIdeasComponent extends Component
             
             if ($response) {
                 $this->generatedIdeas = $this->parseGeneratedIdeas($response);
-                $this->successMessage = 'Post ideas generated successfully!';
+                $this->successMessage = 'Post ideas generated successfully! Count: ' . count($this->generatedIdeas);
             } else {
                 $this->errorMessage = 'Failed to generate post ideas. Please try again.';
             }
@@ -94,7 +94,7 @@ class GeneratePostIdeasComponent extends Component
         - A complete, human-written post that someone would actually publish
         - Engaging, conversational, and authentic in tone
         - Include relevant hashtags naturally within the content
-        - Be between 150-300 words
+        - Be between 150-279 words
         - Have a compelling hook and clear value for the audience
         - Feel like it was written by a real person, not an AI
         
@@ -113,8 +113,19 @@ class GeneratePostIdeasComponent extends Component
         foreach ($lines as $line) {
             $line = trim($line);
             
-            // Check if this is a new numbered post (1. or ### 1.)
-            if (preg_match('/^(?:###\s*)?\d+\.\s*(.+)$/', $line, $matches)) {
+            // Check if this is a new numbered post (1., ### 1., **1.**, etc.)
+            if (preg_match('/^(?:###\s*)?\*\*\d+\.\*\*\s*(.+)$/', $line, $matches)) {
+                // Save the previous idea if we have one
+                if (!empty($currentIdea) && $ideaNumber > 0) {
+                    $ideas[] = trim($currentIdea);
+                }
+                
+                // Start new idea
+                $currentIdea = $matches[1];
+                $ideaNumber++;
+            }
+            // Also check for regular numbered format (1. or ### 1.)
+            else if (preg_match('/^(?:###\s*)?\d+\.\s*(.+)$/', $line, $matches)) {
                 // Save the previous idea if we have one
                 if (!empty($currentIdea) && $ideaNumber > 0) {
                     $ideas[] = trim($currentIdea);
@@ -125,7 +136,10 @@ class GeneratePostIdeasComponent extends Component
                 $ideaNumber++;
             }
             // Continue building the current idea (any non-empty line that's not a new numbered item)
-            else if (!empty($line) && $ideaNumber > 0 && !preg_match('/^(?:###\s*)?\d+\./', $line)) {
+            else if (!empty($line) && $ideaNumber > 0 && 
+                     !preg_match('/^(?:###\s*)?\d+\./', $line) && 
+                     !preg_match('/^(?:###\s*)?\*\*\d+\.\*\*/', $line) &&
+                     !preg_match('/^---$/', $line)) {
                 $currentIdea .= "\n" . $line;
             }
         }
@@ -148,8 +162,11 @@ class GeneratePostIdeasComponent extends Component
 
     public function editInChat($index)
     {
-        if (isset($this->generatedIdeas[$index])) {
-            $idea = $this->generatedIdeas[$index];
+        // Calculate the actual index in the full ideas array
+        $actualIndex = ($this->currentPage - 1) * $this->perPage + $index;
+        
+        if (isset($this->generatedIdeas[$actualIndex])) {
+            $idea = $this->generatedIdeas[$actualIndex];
             $this->dispatch('edit-idea-in-chat', idea: $idea);
             $this->successMessage = 'Idea sent to chat for editing!';
         }
@@ -185,8 +202,11 @@ class GeneratePostIdeasComponent extends Component
 
     public function toggleFavorite($index)
     {
-        if (isset($this->generatedIdeas[$index])) {
-            $idea = $this->generatedIdeas[$index];
+        // Calculate the actual index in the full ideas array
+        $actualIndex = ($this->currentPage - 1) * $this->perPage + $index;
+        
+        if (isset($this->generatedIdeas[$actualIndex])) {
+            $idea = $this->generatedIdeas[$actualIndex];
             $ideaId = md5($idea); // Create unique ID for the idea
             
             $this->dispatch('toggle-favorite', [

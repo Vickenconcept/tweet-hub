@@ -103,13 +103,20 @@
                         wire:model="message"
                         x-ref="textarea"
                         rows="4"
-                        maxlength="2800"
+                        maxlength="280"
                         placeholder="Write here.\n\nSkip 3 lines to start a thread."
                         class="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none text-gray-800 bg-white shadow-sm"
                                 @keyup="checkThread($event.target.value)"
                     ></textarea>
-                    <div class="absolute bottom-2 right-4 text-xs text-gray-400">
-                        {{ strlen($message ?? '') }} / 2800 saved <span class="text-green-500">&#10003;</span>
+                    <div class="absolute bottom-2 right-4 text-xs" 
+                         :class="{
+                             'text-gray-400': $wire.message && $wire.message.length <= 260,
+                             'text-yellow-500': $wire.message && $wire.message.length > 260 && $wire.message.length <= 279,
+                             'text-red-500': $wire.message && $wire.message.length > 279
+                         }">
+                        <span x-text="$wire.message ? $wire.message.length : 0"></span> / 279
+                        <span x-show="$wire.message && $wire.message.length <= 280" class="text-green-500">&#10003;</span>
+                        <span x-show="$wire.message && $wire.message.length > 280" class="text-red-500">&#10005;</span>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 mb-4">
