@@ -19,7 +19,22 @@ class TwitterService
      */
     public function getRecentMentions($accountId)
     {
-        return $this->client->timeline()->getRecentMentions($accountId)->performRequest();
+        $maxRetries = 3;
+        $retryDelay = 2; // seconds
+
+        for ($retry = 0; $retry < $maxRetries; $retry++) {
+            try {
+                return $this->client->timeline()->getRecentMentions($accountId)->performRequest();
+            } catch (\GuzzleHttp\Exception\ClientException $e) {
+                if ($e->getResponse()->getStatusCode() === 429 && $retry < $maxRetries - 1) {
+                    // Wait with exponential backoff
+                    $waitTime = $retryDelay * pow(2, $retry);
+                    sleep($waitTime);
+                    continue;
+                }
+                throw $e;
+            }
+        }
     }
 
     /**
@@ -144,6 +159,14 @@ class TwitterService
     public function retweet($tweetId)
     {
         return $this->client->retweet()->performRequest(['tweet_id' => $tweetId]);
+    }
+
+    /**
+     * Like a tweet.
+     */
+    public function likeTweet($tweetId)
+    {
+        return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetId]);
     }
 
     // Tweet/Replies endpoints

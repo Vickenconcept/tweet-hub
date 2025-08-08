@@ -51,7 +51,7 @@
     </div>
 
     <!-- Main Content Area -->
-    <div class="flex-1 flex flex-col px-6 py-4">
+    <div class="flex-1 flex flex-col px-6 py-4 h-full">
         @if ($activeTab === 'compose')
             @if ($successMessage)
                 <div class="mb-2 p-2 bg-green-100 text-green-700 rounded">{{ $successMessage }}</div>
@@ -233,7 +233,7 @@
                 </div>
         @elseif ($activeTab === 'scheduled')
             @if (count($scheduledPosts) > 0)
-                <div class="space-y-4">
+                <div class="space-y-4 overflow-y-auto h-[80%]">
                     @foreach ($scheduledPosts as $post)
                         <div class="bg-gray-50 rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow duration-200">
                             <div class="flex justify-between items-start mb-3">
@@ -294,7 +294,7 @@
             @endif
         @elseif ($activeTab === 'drafts')
             @if (count($drafts) > 0)
-                <div class="space-y-4">
+                <div class="space-y-4 overflow-y-auto h-[80%]">
                     @foreach ($drafts as $draft)
                         <button wire:click="continueDraft({{ $draft->id }})" type="button" 
                             class="w-full text-left bg-gray-50 rounded-lg shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow duration-200">
@@ -353,7 +353,7 @@
                         Clear All
                     </button>
                 </div>
-                <div class="space-y-4">
+                <div class="space-y-4 overflow-y-auto h-[80%]">
                     @foreach ($sentPosts as $post)
                         <div class="bg-gray-50 rounded-lg shadow-sm border border-gray-100 p-4">
                             <div class="flex justify-between items-start mb-3">

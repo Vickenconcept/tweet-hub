@@ -27,6 +27,34 @@
                         <span>Dashboard</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ route('daily-post-ideas') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('daily-post-ideas') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">
+                        <i class="bx bx-lightbulb text-xl {{ request()->routeIs('daily-post-ideas') ? 'text-black' : 'text-indigo-200 group-hover:text-white' }}"></i>
+                        <span>Daily Ideas</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ route('generate-post-ideas') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('generate-post-ideas') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">
+                        <i class="bx bx-edit text-xl {{ request()->routeIs('generate-post-ideas') ? 'text-black' : 'text-indigo-200 group-hover:text-white' }}"></i>
+                        <span>Generate Ideas</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ route('queued-posts') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('queued-posts') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">
+                        <i class="bx bx-time text-xl {{ request()->routeIs('queued-posts') ? 'text-black' : 'text-indigo-200 group-hover:text-white' }}"></i>
+                        <span>Queued Posts</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ route('twitter-mentions') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('twitter-mentions') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">
+                        <i class="bx bx-at text-xl {{ request()->routeIs('twitter-mentions') ? 'text-black' : 'text-indigo-200 group-hover:text-white' }}"></i>
+                        <span>Mentions</span>
+                    </a>
+                </li>
            
                 {{-- <li>
                     <a href="{{ route('reseller.index') }}"

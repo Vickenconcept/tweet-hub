@@ -516,6 +516,15 @@ class ChatComponent extends Component
         $this->successMessage = 'All sent posts cleared successfully!';
     }
 
+    #[On('edit-idea-in-chat')]
+    public function editIdeaInChat($idea)
+    {
+        $this->message = $idea;
+        $this->activeTab = 'compose';
+        $this->dispatch('update-alpine-message', ['message' => $this->message]);
+        $this->successMessage = 'Idea loaded for editing! You can now modify and post it.';
+    }
+
     public function render()
     {
         return view('livewire.chat-component', [

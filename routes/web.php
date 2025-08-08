@@ -44,6 +44,13 @@ Route::middleware(['auth'])->group(function () {
     Route::view('profile', 'profile')->name('profile');
     Route::post('profile/name', [ProfileController::class, 'changeName'])->name('changeName');
     Route::post('profile/password', [ProfileController::class, 'changePassword'])->name('changePassword');
+    
+    // New routes for the Livewire components
+    Route::view('daily-post-ideas', 'daily-post-ideas')->name('daily-post-ideas');
+    Route::view('generate-post-ideas', 'generate-post-ideas')->name('generate-post-ideas');
+    Route::view('queued-posts', 'queued-posts')->name('queued-posts');
+    Route::view('twitter-mentions', 'twitter-mentions')->name('twitter-mentions');
+    
     // Route::resource('reseller', ResellerController::class);
 
 });
