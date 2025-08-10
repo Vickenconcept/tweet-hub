@@ -53,6 +53,17 @@ class User extends Authenticatable
 
     public function isTwitterConnected()
     {
-        return $this->twitter_account_connected && $this->twitter_account_id && $this->twitter_access_token;
+        return $this->twitter_account_connected && 
+               $this->twitter_account_id && 
+               $this->twitter_access_token && 
+               $this->twitter_access_token_secret;
+    }
+
+    public function hasValidTwitterTokens()
+    {
+        return $this->isTwitterConnected() && 
+               $this->twitter_refresh_token && 
+               !empty($this->twitter_access_token) && 
+               !empty($this->twitter_access_token_secret);
     }
 }

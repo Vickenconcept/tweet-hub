@@ -2,10 +2,10 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
+use App\Models\User;
 use App\Services\TwitterService;
 use Illuminate\Support\Facades\Auth;
-use Livewire\Attributes\On;
+use Livewire\Component;
 
 class TwitterMentionsComponent extends Component
 {
@@ -13,18 +13,12 @@ class TwitterMentionsComponent extends Component
     public $loading = false;
     public $errorMessage = '';
     public $successMessage = '';
+    public $lastRefresh = '';
     public $selectedMention = null;
     public $replyContent = '';
     public $showReplyModal = false;
-    public $lastRefresh = null;
-    public $forceRefresh = false;
-
-    protected $twitterService;
-
-    public function boot()
-    {
-        $this->twitterService = null;
-    }
+    public $currentPage = 1;
+    public $perPage = 5;
 
     public function mount()
     {
@@ -35,22 +29,30 @@ class TwitterMentionsComponent extends Component
     {
         $this->loading = true;
         $this->errorMessage = '';
-        
+        $this->successMessage = '';
+
         $user = Auth::user();
-        if (!$user || !$user->isTwitterConnected()) {
+        if (!$user) {
+            $this->errorMessage = 'User not authenticated.';
+            $this->loading = false;
+            return;
+        }
+
+        if (!$user->twitter_account_connected || !$user->twitter_account_id || !$user->twitter_access_token || !$user->twitter_access_token_secret) {
             $this->errorMessage = 'Please connect your Twitter account first.';
             $this->loading = false;
             return;
         }
 
-        // Check cache first to reduce API calls
+        // Check cache first
         $cacheKey = "twitter_mentions_{$user->id}";
         $cachedMentions = \Illuminate\Support\Facades\Cache::get($cacheKey);
         
-        if ($cachedMentions && !$this->forceRefresh) {
+        if ($cachedMentions) {
             $this->mentions = $cachedMentions['data'] ?? [];
             $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
-            $this->successMessage = 'Mentions loaded from cache. Click refresh to get latest mentions.';
+            $this->currentPage = 1; // Reset to first page when loading from cache
+            $this->successMessage = 'Mentions loaded. Click refresh to get latest mentions.';
             $this->loading = false;
             return;
         }
@@ -65,23 +67,37 @@ class TwitterMentionsComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $this->twitterService = new TwitterService($settings);
-            $mentionsResponse = $this->twitterService->getRecentMentions($user->twitter_account_id);
-            $this->mentions = $mentionsResponse->data ?? [];
+            $twitterService = new TwitterService($settings);
+            $mentionsResponse = $twitterService->getRecentMentions($user->twitter_account_id);
+
+            if (!isset($mentionsResponse->data)) {
+                throw new \Exception('Invalid API response: missing data property');
+            }
+
+            $this->mentions = is_array($mentionsResponse->data) ? $mentionsResponse->data : (array) $mentionsResponse->data;
             $this->lastRefresh = now()->format('M j, Y g:i A');
-            $this->successMessage = 'Mentions loaded successfully!';
-            
-            // Cache the results for 5 minutes
+            $this->currentPage = 1; // Reset to first page when new mentions are loaded
+
+            $mentionsCount = count($this->mentions);
+            if ($mentionsCount > 0) {
+                $this->successMessage = "Mentions loaded successfully! Found {$mentionsCount} mentions.";
+            } else {
+                $this->successMessage = "No mentions found. This could mean no one has mentioned you recently, or your self-mention hasn't been indexed yet.";
+            }
+
+            // Cache the results for 15 minutes
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
                 'data' => $this->mentions,
                 'timestamp' => $this->lastRefresh
-            ], 300);
-            
+            ], 900);
+
         } catch (\GuzzleHttp\Exception\ClientException $e) {
-            if ($e->getResponse()->getStatusCode() === 429) {
+            $statusCode = $e->getResponse()->getStatusCode();
+            
+            if ($statusCode === 429) {
                 $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again.';
             } else {
-                $this->errorMessage = 'Failed to load mentions: ' . $e->getMessage();
+                $this->errorMessage = "Failed to load mentions: HTTP {$statusCode}";
             }
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to load mentions: ' . $e->getMessage();
@@ -106,16 +122,26 @@ class TwitterMentionsComponent extends Component
             'replyContent' => 'required|min:1|max:280',
         ]);
 
-        if (!$this->selectedMention || !$this->twitterService) {
+        if (!$this->selectedMention) {
             $this->errorMessage = 'Unable to send reply.';
             return;
         }
 
         try {
-            $response = $this->twitterService->createTweet(
+            $settings = [
+                'account_id' => Auth::user()->twitter_account_id,
+                'access_token' => Auth::user()->twitter_access_token,
+                'access_token_secret' => Auth::user()->twitter_access_token_secret,
+                'consumer_key' => config('services.twitter.api_key'),
+                'consumer_secret' => config('services.twitter.api_key_secret'),
+                'bearer_token' => config('services.twitter.bearer_token'),
+            ];
+
+            $twitterService = new TwitterService($settings);
+            $response = $twitterService->createTweet(
                 $this->replyContent, 
                 [], 
-                $this->selectedMention['id']
+                $this->selectedMention->id
             );
             
             if ($response && isset($response->data)) {
@@ -123,7 +149,10 @@ class TwitterMentionsComponent extends Component
                 $this->showReplyModal = false;
                 $this->selectedMention = null;
                 $this->replyContent = '';
-                $this->loadMentions(); // Refresh mentions
+                // Show floating toast and refresh mentions after a delay
+                $this->dispatch('reply-sent');
+                $this->dispatch('show-success', 'Reply sent successfully!');
+                $this->dispatch('refresh-mentions-delayed');
             } else {
                 $this->errorMessage = 'Failed to send reply.';
             }
@@ -134,16 +163,24 @@ class TwitterMentionsComponent extends Component
 
     public function likeMention($mentionId)
     {
-        if (!$this->twitterService) {
-            $this->errorMessage = 'Twitter service not available.';
-            return;
-        }
-
         try {
-            $response = $this->twitterService->likeTweet($mentionId);
+            $settings = [
+                'account_id' => Auth::user()->twitter_account_id,
+                'access_token' => Auth::user()->twitter_access_token,
+                'access_token_secret' => Auth::user()->twitter_access_token_secret,
+                'consumer_key' => config('services.twitter.api_key'),
+                'consumer_secret' => config('services.twitter.api_key_secret'),
+                'bearer_token' => config('services.twitter.bearer_token'),
+            ];
+
+            $twitterService = new TwitterService($settings);
+            $response = $twitterService->likeTweet($mentionId);
+            
             if ($response) {
                 $this->successMessage = 'Tweet liked successfully!';
-                $this->loadMentions(); // Refresh to update like status
+                $this->dispatch('show-success', 'Tweet liked successfully!');
+                // Clear cache to show updated data
+                $this->clearMentionsCache();
             }
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to like tweet: ' . $e->getMessage();
@@ -152,16 +189,24 @@ class TwitterMentionsComponent extends Component
 
     public function retweetMention($mentionId)
     {
-        if (!$this->twitterService) {
-            $this->errorMessage = 'Twitter service not available.';
-            return;
-        }
-
         try {
-            $response = $this->twitterService->retweet($mentionId);
+            $settings = [
+                'account_id' => Auth::user()->twitter_account_id,
+                'access_token' => Auth::user()->twitter_access_token,
+                'access_token_secret' => Auth::user()->twitter_access_token_secret,
+                'consumer_key' => config('services.twitter.api_key'),
+                'consumer_secret' => config('services.twitter.api_key_secret'),
+                'bearer_token' => config('services.twitter.bearer_token'),
+            ];
+
+            $twitterService = new TwitterService($settings);
+            $response = $twitterService->retweet($mentionId);
+            
             if ($response) {
                 $this->successMessage = 'Tweet retweeted successfully!';
-                $this->loadMentions(); // Refresh to update retweet status
+                $this->dispatch('show-success', 'Tweet retweeted successfully!');
+                // Clear cache to show updated data
+                $this->clearMentionsCache();
             }
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to retweet: ' . $e->getMessage();
@@ -181,11 +226,62 @@ class TwitterMentionsComponent extends Component
         $this->successMessage = '';
     }
 
-    public function forceRefreshMentions()
+    public function refreshMentions()
     {
-        $this->forceRefresh = true;
         $this->loadMentions();
-        $this->forceRefresh = false;
+    }
+
+    public function clearSuccessMessage()
+    {
+        $this->successMessage = '';
+    }
+
+    public function clearErrorMessage()
+    {
+        $this->errorMessage = '';
+    }
+
+    public function refreshMentionsDelayed()
+    {
+        // This method will be called by JavaScript after a delay
+        $this->loadMentions();
+    }
+
+    public function clearMentionsCache()
+    {
+        $user = Auth::user();
+        if ($user) {
+            $cacheKey = "twitter_mentions_{$user->id}";
+            \Illuminate\Support\Facades\Cache::forget($cacheKey);
+        }
+    }
+
+    public function nextPage()
+    {
+        $this->currentPage++;
+    }
+
+    public function previousPage()
+    {
+        if ($this->currentPage > 1) {
+            $this->currentPage--;
+        }
+    }
+
+    public function goToPage($page)
+    {
+        $this->currentPage = $page;
+    }
+
+    public function getPaginatedMentions()
+    {
+        $start = ($this->currentPage - 1) * $this->perPage;
+        return array_slice($this->mentions, $start, $this->perPage);
+    }
+
+    public function getTotalPages()
+    {
+        return ceil(count($this->mentions) / $this->perPage);
     }
 
     public function render()

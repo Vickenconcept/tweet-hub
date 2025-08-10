@@ -55,6 +55,13 @@
                         <span>Mentions</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ route('user-management') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('user-management') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">
+                        <i class="bx bx-user-circle text-xl {{ request()->routeIs('user-management') ? 'text-black' : 'text-indigo-200 group-hover:text-white' }}"></i>
+                        <span>User Management</span>
+                    </a>
+                </li>
            
                 {{-- <li>
                     <a href="{{ route('reseller.index') }}"

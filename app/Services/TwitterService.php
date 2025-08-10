@@ -20,19 +20,27 @@ class TwitterService
      */
     public function getRecentMentions($accountId)
     {
-        $maxRetries = 3;
-        $retryDelay = 2; // seconds
+        $maxRetries = config('twitter.rate_limiting.max_retries', 3);
+        $baseDelay = config('twitter.rate_limiting.base_retry_delay', 5);
 
         for ($retry = 0; $retry < $maxRetries; $retry++) {
             try {
+                if (config('twitter.logging.log_api_calls', true)) {
                 Log::info('Fetching recent mentions', ['account_id' => $accountId, 'retry' => $retry]);
+                }
+                
                 $result = $this->client->timeline()->getRecentMentions($accountId)->performRequest();
+                
+                if (config('twitter.logging.log_success', false)) {
                 Log::info('Recent mentions fetched successfully', ['account_id' => $accountId]);
+                }
+                
                 return $result;
             } catch (\GuzzleHttp\Exception\ClientException $e) {
                 $statusCode = $e->getResponse()->getStatusCode();
                 $body = $e->getResponse()->getBody()->getContents();
                 
+                if (config('twitter.logging.log_errors', true)) {
                 Log::error('Twitter API Error fetching mentions', [
                     'account_id' => $accountId,
                     'status_code' => $statusCode,
@@ -40,14 +48,53 @@ class TwitterService
                     'retry' => $retry,
                     'max_retries' => $maxRetries
                 ]);
+                }
                 
                 if ($statusCode === 429 && $retry < $maxRetries - 1) {
-                    // Wait with exponential backoff
-                    $waitTime = $retryDelay * pow(2, $retry);
-                    Log::info('Rate limited, waiting before retry', ['wait_time' => $waitTime, 'retry' => $retry]);
+                    // Exponential backoff with jitter to avoid thundering herd
+                    $waitTime = $baseDelay * pow(2, $retry) + rand(1, 5);
+                    
+                    if (config('twitter.logging.log_rate_limits', true)) {
+                        Log::info('Rate limited, waiting before retry', [
+                            'wait_time' => $waitTime, 
+                            'retry' => $retry,
+                            'status_code' => $statusCode
+                        ]);
+                    }
+                    
                     sleep($waitTime);
                     continue;
                 }
+                
+                // For other client errors, don't retry
+                if ($statusCode >= 400 && $statusCode < 500 && $statusCode !== 429) {
+                    Log::error('Client error, not retrying', ['status_code' => $statusCode]);
+                    throw $e;
+                }
+                
+                // For server errors (5xx), retry
+                if ($statusCode >= 500 && $retry < $maxRetries - 1) {
+                    $waitTime = $baseDelay * pow(2, $retry);
+                    Log::info('Server error, retrying', ['wait_time' => $waitTime, 'retry' => $retry]);
+                    sleep($waitTime);
+                    continue;
+                }
+                
+                throw $e;
+            } catch (\Exception $e) {
+                Log::error('Unexpected error fetching mentions', [
+                    'account_id' => $accountId,
+                    'error' => $e->getMessage(),
+                    'retry' => $retry
+                ]);
+                
+                if ($retry < $maxRetries - 1) {
+                    $waitTime = $baseDelay * pow(2, $retry);
+                    Log::info('Unexpected error, retrying', ['wait_time' => $waitTime, 'retry' => $retry]);
+                    sleep($waitTime);
+                    continue;
+                }
+                
                 throw $e;
             }
         }
@@ -232,6 +279,7 @@ class TwitterService
      */
     public function likeTweet($tweetId)
     {
+        // Try the correct like endpoint structure - might need different parameters
         return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetId]);
     }
 
@@ -268,7 +316,14 @@ class TwitterService
      */
     public function getBlockedUsers()
     {
-        return $this->client->userBlocks()->lookup()->performRequest();
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $userId = $me->data->id;
+        return $this->client->userBlocks()->lookup($userId)->performRequest();
     }
 
     // User/Follows endpoints
@@ -277,7 +332,14 @@ class TwitterService
      */
     public function getFollowers()
     {
-        return $this->client->userFollows()->getFollowers()->performRequest();
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $userId = $me->data->id;
+        return $this->client->userFollows()->getFollowers($userId)->performRequest();
     }
 
     /**
@@ -285,7 +347,14 @@ class TwitterService
      */
     public function getFollowing()
     {
-        return $this->client->userFollows()->getFollowing()->performRequest();
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $userId = $me->data->id;
+        return $this->client->userFollows()->getFollowing($userId)->performRequest();
     }
 
     /**
@@ -293,7 +362,14 @@ class TwitterService
      */
     public function followUser($userId)
     {
-        return $this->client->userFollows()->follow()->performRequest(['target_user_id' => $userId]);
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $sourceUserId = $me->data->id;
+        return $this->client->userFollows()->follow($sourceUserId)->performRequest(['target_user_id' => $userId]);
     }
 
     /**
@@ -301,7 +377,14 @@ class TwitterService
      */
     public function unfollowUser($userId)
     {
-        return $this->client->userFollows()->unfollow($userId)->performRequest(['target_user_id' => $userId]);
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $sourceUserId = $me->data->id;
+        return $this->client->userFollows()->unfollow($sourceUserId)->performRequest(['target_user_id' => $userId]);
     }
 
     // User/Lookup endpoints
@@ -327,7 +410,14 @@ class TwitterService
      */
     public function getMutedUsers()
     {
-        return $this->client->userMutes()->lookup()->performRequest();
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $userId = $me->data->id;
+        return $this->client->userMutes()->lookup($userId)->performRequest();
     }
 
     /**
@@ -335,7 +425,14 @@ class TwitterService
      */
     public function muteUser($userId)
     {
-        return $this->client->userMutes()->mute()->performRequest(['target_user_id' => $userId]);
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $sourceUserId = $me->data->id;
+        return $this->client->userMutes()->mute($sourceUserId)->performRequest(['target_user_id' => $userId]);
     }
 
     /**
@@ -343,7 +440,45 @@ class TwitterService
      */
     public function unmuteUser($userId)
     {
-        return $this->client->userMutes()->unmute()->performRequest(['target_user_id' => $userId]);
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $sourceUserId = $me->data->id;
+        return $this->client->userMutes()->unmute($sourceUserId)->performRequest(['target_user_id' => $userId]);
+    }
+
+    // User/Blocks endpoints
+    /**
+     * Block a user by ID.
+     */
+    public function blockUser($userId)
+    {
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $sourceUserId = $me->data->id;
+        return $this->client->userBlocks()->block($sourceUserId)->performRequest(['target_user_id' => $userId]);
+    }
+
+    /**
+     * Unblock a user by ID.
+     */
+    public function unblockUser($userId)
+    {
+        // Get the authenticated user's ID first
+        $me = $this->findMe();
+        if (!$me || !isset($me->data->id)) {
+            throw new \Exception('Unable to get authenticated user ID');
+        }
+        
+        $sourceUserId = $me->data->id;
+        return $this->client->userBlocks()->unblock($sourceUserId)->performRequest(['target_user_id' => $userId]);
     }
 
     /**
@@ -367,6 +502,62 @@ class TwitterService
         ]);
         
         return $truncated;
+    }
+
+    /**
+     * Check Twitter API status and rate limits
+     */
+    public function checkApiStatus()
+    {
+        try {
+            // Try to get user info to check API status
+            $result = $this->client->userMeLookup()->performRequest();
+            
+            Log::info('Twitter API status check successful', [
+                'user_id' => $result->data->id ?? 'unknown',
+                'username' => $result->data->username ?? 'unknown'
+            ]);
+            
+            return [
+                'status' => 'ok',
+                'user_id' => $result->data->id ?? null,
+                'username' => $result->data->username ?? null,
+                'message' => 'API is working correctly'
+            ];
+            
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $statusCode = $e->getResponse()->getStatusCode();
+            $body = $e->getResponse()->getBody()->getContents();
+            
+            Log::error('Twitter API status check failed', [
+                'status_code' => $statusCode,
+                'error_body' => $body
+            ]);
+            
+            if ($statusCode === 429) {
+                return [
+                    'status' => 'rate_limited',
+                    'message' => 'Rate limit exceeded. Please wait before making more requests.',
+                    'status_code' => $statusCode
+                ];
+            }
+            
+            return [
+                'status' => 'error',
+                'message' => "HTTP {$statusCode}: {$e->getMessage()}",
+                'status_code' => $statusCode
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('Twitter API status check unexpected error', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return [
+                'status' => 'error',
+                'message' => "Unexpected error: {$e->getMessage()}"
+            ];
+        }
     }
 
     /**

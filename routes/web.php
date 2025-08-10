@@ -50,6 +50,7 @@ Route::middleware(['auth'])->group(function () {
     Route::view('generate-post-ideas', 'generate-post-ideas')->name('generate-post-ideas');
     Route::view('queued-posts', 'queued-posts')->name('queued-posts');
     Route::view('twitter-mentions', 'twitter-mentions')->name('twitter-mentions');
+    Route::view('user-management', 'user-management')->name('user-management');
     
     // Route::resource('reseller', ResellerController::class);
 
