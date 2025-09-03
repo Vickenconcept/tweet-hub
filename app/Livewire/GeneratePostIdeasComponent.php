@@ -5,6 +5,7 @@ namespace App\Livewire;
 use Livewire\Component;
 use App\Services\ChatGptService;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\On;
 
 class GeneratePostIdeasComponent extends Component
@@ -17,11 +18,12 @@ class GeneratePostIdeasComponent extends Component
     public $prompt = '';
     public $ideaType = 'general';
     public $tone = 'professional';
-    public $platform = 'twitter';
+
     public $activeTab = 'generate';
-    public $currentPage = 1;
-    public $perPage = 10;
+
     public $favorites = [];
+    public $hasCachedIdeas = false;
+    public $cacheKey = '';
 
     protected $chatGptService;
 
@@ -33,6 +35,26 @@ class GeneratePostIdeasComponent extends Component
     public function mount()
     {
         $this->loadFavorites();
+        $this->checkCachedIdeas();
+    }
+
+    public function checkCachedIdeas()
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return;
+        }
+
+        $this->cacheKey = "generated_ideas_{$user->id}";
+        $cachedIdeas = Cache::get($this->cacheKey);
+
+        if ($cachedIdeas && !empty($cachedIdeas)) {
+            $this->generatedIdeas = $cachedIdeas;
+            $this->hasCachedIdeas = true;
+            $this->successMessage = 'Generated ideas loaded from cache!';
+        } else {
+            $this->hasCachedIdeas = false;
+        }
     }
 
     public function generatePostIdeas()
@@ -51,6 +73,15 @@ class GeneratePostIdeasComponent extends Component
             
             if ($response) {
                 $this->generatedIdeas = $this->parseGeneratedIdeas($response);
+                
+                // Cache the generated ideas
+                $user = Auth::user();
+                if ($user) {
+                    $this->cacheKey = "generated_ideas_{$user->id}";
+                    Cache::put($this->cacheKey, $this->generatedIdeas, now()->addDays(7)); // Cache for 7 days
+                    $this->hasCachedIdeas = true;
+                }
+                
                 $this->successMessage = 'Post ideas generated successfully! Count: ' . count($this->generatedIdeas);
             } else {
                 $this->errorMessage = 'Failed to generate post ideas. Please try again.';
@@ -64,7 +95,7 @@ class GeneratePostIdeasComponent extends Component
 
     private function buildPrompt()
     {
-        $basePrompt = "Generate 10 complete, ready-to-post social media posts based on this prompt: '{$this->prompt}'";
+        $basePrompt = "Generate 12 complete, ready-to-post social media posts based on this prompt: '{$this->prompt}'";
         
         $typeContext = match($this->ideaType) {
             'educational' => 'Write educational posts that teach something valuable with clear explanations, actionable tips, or insights that help the audience learn.',
@@ -82,25 +113,17 @@ class GeneratePostIdeasComponent extends Component
             default => 'Use a balanced, engaging tone that connects with the audience.'
         };
 
-        $platformContext = match($this->platform) {
-            'twitter' => 'Optimize for Twitter/X with concise, impactful content that works within character limits.',
-            'instagram' => 'Create visual-friendly content with strong storytelling and engaging narratives.',
-            'linkedin' => 'Focus on professional content with industry insights and thought leadership.',
-            'facebook' => 'Create community-engaging content that encourages discussion and interaction.',
-            default => 'Create content that works well across multiple social media platforms.'
-        };
-
         $detailedPrompt = "Each post should be:
         - A complete, human-written post that someone would actually publish
         - Engaging, conversational, and authentic in tone
         - Include relevant hashtags naturally within the content
-        - Be between 150-279 words
+        - Be between 150-279 words (optimized for Twitter/X character limits)
         - Have a compelling hook and clear value for the audience
         - Feel like it was written by a real person, not an AI
         
         Write these as actual posts someone would publish, not outlines or ideas.";
 
-        return "{$basePrompt}. {$typeContext} {$toneContext} {$platformContext}. {$detailedPrompt} Format as a numbered list with complete posts.";
+        return "{$basePrompt}. {$typeContext} {$toneContext}. {$detailedPrompt} Format as a numbered list with complete posts.";
     }
 
     private function parseGeneratedIdeas($response)
@@ -149,7 +172,7 @@ class GeneratePostIdeasComponent extends Component
             $ideas[] = trim($currentIdea);
         }
         
-        return array_slice($ideas, 0, 10); // Ensure max 10 ideas
+        return array_slice($ideas, 0, 12); // Ensure max 12 ideas
     }
 
     public function selectIdea($index)
@@ -179,12 +202,19 @@ class GeneratePostIdeasComponent extends Component
         $this->prompt = '';
         $this->errorMessage = '';
         $this->successMessage = '';
+        $this->hasCachedIdeas = false;
+        
+        // Clear the cache
+        if ($this->cacheKey) {
+            Cache::forget($this->cacheKey);
+        }
+        
+        $this->successMessage = 'All ideas cleared and cache removed!';
     }
 
     public function setTab($tab)
     {
         $this->activeTab = $tab;
-        $this->currentPage = 1;
         
         if ($tab === 'favorites') {
             $this->dispatch('render-favorites');
@@ -202,11 +232,8 @@ class GeneratePostIdeasComponent extends Component
 
     public function toggleFavorite($index)
     {
-        // Calculate the actual index in the full ideas array
-        $actualIndex = ($this->currentPage - 1) * $this->perPage + $index;
-        
-        if (isset($this->generatedIdeas[$actualIndex])) {
-            $idea = $this->generatedIdeas[$actualIndex];
+        if (isset($this->generatedIdeas[$index])) {
+            $idea = $this->generatedIdeas[$index];
             $ideaId = md5($idea); // Create unique ID for the idea
             
             $this->dispatch('toggle-favorite', [
@@ -228,32 +255,9 @@ class GeneratePostIdeasComponent extends Component
         $this->successMessage = 'Idea removed from favorites!';
     }
 
-    public function nextPage()
-    {
-        $totalPages = ceil(count($this->generatedIdeas) / $this->perPage);
-        if ($this->currentPage < $totalPages) {
-            $this->currentPage++;
-        }
-    }
-
-    public function previousPage()
-    {
-        if ($this->currentPage > 1) {
-            $this->currentPage--;
-        }
-    }
-
-    public function getPaginatedIdeas()
-    {
-        $start = ($this->currentPage - 1) * $this->perPage;
-        return array_slice($this->generatedIdeas, $start, $this->perPage);
-    }
-
     public function render()
     {
         return view('livewire.generate-post-ideas-component', [
-            'paginatedIdeas' => $this->getPaginatedIdeas(),
-            'totalPages' => ceil(count($this->generatedIdeas) / $this->perPage),
             'totalIdeas' => count($this->generatedIdeas),
         ]);
     }

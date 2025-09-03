@@ -71,8 +71,84 @@
                     </a>
                 </li> --}}
             </ul>
+            
+            <!-- User Profile Section -->
+           
+            
             <div class="my-4 border-t border-black/40"></div>
             <ul class="font-medium flex flex-col gap-1">
+                @auth
+                @if(auth()->user()->twitter_account_connected && auth()->user()->twitter_username)
+                    <div class="my-4 border-t border-black/40"></div>
+                    <div class="px-4 py-3">
+                        <div class="flex items-center space-x-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors cursor-pointer"
+                             onclick="window.open('https://twitter.com/{{ auth()->user()->twitter_username }}', '_blank')">
+                            <div class="flex-shrink-0">
+                                @if(auth()->user()->twitter_profile_image_url)
+                                    <img src="{{ auth()->user()->twitter_profile_image_url }}" 
+                                         alt="{{ auth()->user()->twitter_username }}" 
+                                         class="w-10 h-10 rounded-full border-2 border-gray-600">
+                                @else
+                                    <div class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
+                                        <i class='bx bx-user text-white text-lg'></i>
+                                    </div>
+                                @endif
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-white truncate">
+                                    <span>@</span>{{ auth()->user()->twitter_username }}
+                                </p>
+                                @if(auth()->user()->twitter_name)
+                                    <p class="text-xs text-gray-300 truncate">
+                                        {{ auth()->user()->twitter_name }}
+                                    </p>
+                                @endif
+                            </div>
+                            <div class="flex-shrink-0">
+                                <i class='bx bx-external-link text-gray-400 text-sm'></i>
+                            </div>
+                        </div>
+                    </div>
+                @elseif(auth()->user()->twitter_account_connected)
+                    <div class="my-4 border-t border-black/40"></div>
+                    <div class="px-4 py-3">
+                        <div class="flex items-center space-x-3 p-3 bg-gray-800 rounded-lg">
+                            <div class="flex-shrink-0">
+                                <div class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
+                                    <i class='bx bx-user text-white text-lg'></i>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-white">
+                                    {{ auth()->user()->name ?? 'User' }}
+                                </p>
+                                <p class="text-xs text-gray-300">
+                                    Twitter connected (profile updating...)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                @else
+                    <div class="my-4 border-t border-black/40"></div>
+                    <div class="px-4 py-3">
+                        <div class="flex items-center space-x-3 p-3 bg-gray-800 rounded-lg">
+                            <div class="flex-shrink-0">
+                                <div class="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
+                                    <i class='bx bx-user text-white text-lg'></i>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-white">
+                                    {{ auth()->user()->name ?? 'User' }}
+                                </p>
+                                <p class="text-xs text-gray-300">
+                                    Twitter not connected
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+            @endauth
                 
                 <li>
                     <a href="{{ route('auth.logout') }}"

@@ -20,9 +20,15 @@ return new class extends Migration
             $table->rememberToken();
             $table->boolean('twitter_account_connected')->default(false);
             $table->string('twitter_account_id')->nullable();
+            $table->string('twitter_username')->nullable();
+            $table->string('twitter_name')->nullable();
+            $table->text('twitter_profile_image_url')->nullable();
             $table->text('twitter_access_token')->nullable();
             $table->text('twitter_access_token_secret')->nullable();
             $table->text('twitter_refresh_token')->nullable();
+            $table->string('default_topic')->nullable();
+            $table->string('default_niche')->nullable();
+            $table->timestamp('last_daily_ideas_generated')->nullable();
             $table->timestamps();
         });
 

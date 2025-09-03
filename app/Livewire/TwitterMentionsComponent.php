@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\User;
 use App\Services\TwitterService;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 
 class TwitterMentionsComponent extends Component
@@ -70,11 +71,32 @@ class TwitterMentionsComponent extends Component
             $twitterService = new TwitterService($settings);
             $mentionsResponse = $twitterService->getRecentMentions($user->twitter_account_id);
 
-            if (!isset($mentionsResponse->data)) {
-                throw new \Exception('Invalid API response: missing data property');
-            }
+            // Log the response for debugging
+            Log::info('Twitter API Response', [
+                'response_type' => gettype($mentionsResponse),
+                'response_keys' => is_object($mentionsResponse) ? array_keys(get_object_vars($mentionsResponse)) : (is_array($mentionsResponse) ? array_keys($mentionsResponse) : 'not object/array'),
+                'response_content' => $mentionsResponse
+            ]);
 
-            $this->mentions = is_array($mentionsResponse->data) ? $mentionsResponse->data : (array) $mentionsResponse->data;
+            // Handle different response structures
+            if (is_object($mentionsResponse)) {
+                if (isset($mentionsResponse->data)) {
+                    $this->mentions = is_array($mentionsResponse->data) ? $mentionsResponse->data : (array) $mentionsResponse->data;
+                } elseif (isset($mentionsResponse->errors)) {
+                    throw new \Exception('Twitter API returned errors: ' . json_encode($mentionsResponse->errors));
+                } else {
+                    // Response might be empty or have different structure
+                    $this->mentions = [];
+                }
+            } elseif (is_array($mentionsResponse)) {
+                if (isset($mentionsResponse['data'])) {
+                    $this->mentions = $mentionsResponse['data'];
+                } else {
+                    $this->mentions = [];
+                }
+            } else {
+                throw new \Exception('Unexpected API response format: ' . gettype($mentionsResponse));
+            }
             $this->lastRefresh = now()->format('M j, Y g:i A');
             $this->currentPage = 1; // Reset to first page when new mentions are loaded
 
@@ -82,7 +104,7 @@ class TwitterMentionsComponent extends Component
             if ($mentionsCount > 0) {
                 $this->successMessage = "Mentions loaded successfully! Found {$mentionsCount} mentions.";
             } else {
-                $this->successMessage = "No mentions found. This could mean no one has mentioned you recently, or your self-mention hasn't been indexed yet.";
+                $this->successMessage = "No mentions found. This could mean no one has mentioned you recently, or your account hasn't been mentioned yet.";
             }
 
             // Cache the results for 15 minutes

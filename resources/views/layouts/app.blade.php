@@ -67,7 +67,7 @@
         <x-sidebar />
         
 
-        <div id="main-section" class="h-full sm:ml-64 bg-gray-100 pt-16 overflow-y-hidden relative flex ">
+        <div id="main-section" class="h-full sm:ml-64 bg-gray-100/40 pt-16 overflow-y-hidden relative flex ">
         {{-- <div id="main-section" class="h-full sm:ml-64 bg-gray-100 pt-20 overflow-y-hidden relative flex "> --}}
             <div>
                 <button id="toggle-btn"

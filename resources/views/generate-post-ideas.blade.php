@@ -1,5 +1,5 @@
 <x-app-layout>
-    <div class="p-6">
+    <div class="p-6 h-screen pb-32 overflow-y-auto scrollbar-hiddens">
         <div class="max-w-4xl mx-auto">
             <livewire:generate-post-ideas-component />
         </div>
