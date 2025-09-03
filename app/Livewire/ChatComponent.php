@@ -5,6 +5,7 @@ namespace App\Livewire;
 use Livewire\Component;
 use App\Models\Post;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\On;
 use App\Services\TwitterService;
 use App\Models\Asset;
@@ -432,6 +433,11 @@ class ChatComponent extends Component
 
     public function uploadAsset()
     {
+        Log::info('uploadAsset method called', [
+            'assetUpload' => $this->assetUpload ? 'File present' : 'No file',
+            'message_before' => $this->message
+        ]);
+        
         $this->validate([
             'assetUpload' => 'required|image|max:5120',
         ]);
@@ -456,6 +462,11 @@ class ChatComponent extends Component
         $this->successMessage = 'Image uploaded and added to message!';
         $this->dispatch('tweet-asset-uploaded', code: $code);
         $this->dispatch('update-alpine-message', ['message' => $this->message]);
+
+        Log::info('Image uploaded successfully', [
+            'code' => $code,
+            'message_after' => $this->message
+        ]);
 
         // Maintain thread mode if active
         if ($this->threadStarted) {

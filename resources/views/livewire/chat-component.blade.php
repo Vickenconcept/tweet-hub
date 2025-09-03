@@ -62,12 +62,12 @@ Livewire.on('post-scheduled', () => {
             @endif
             <div class="flex items-center justify-between mb-6">
                 <span class="text-lg font-bold text-gray-900">Post Content</span>
-                    <div class="flex justify-end items-center gap-2">
+                <div class="flex justify-end items-center gap-2">
                     <button type="button" @click="$wire.endThread()" x-show="threadStarted" style="display: none;"
-                            class="px-3 py-1 text-xs font-medium text-red-600 bg-gradient-to-r from-red-100 to-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer">
-                            <i class='bx bx-x-circle mr-1'></i> Exit Thread
-                        </button>
-                    </div>
+                        class="px-3 py-1 text-xs font-medium text-red-600 bg-gradient-to-r from-red-100 to-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer">
+                        <i class='bx bx-x-circle mr-1'></i> Exit Thread
+                    </button>
+                </div>
             </div>
             <div class=" gap-4 grid grid-cols-6">
                 <!-- Thread Messages Panel -->
@@ -117,7 +117,7 @@ Livewire.on('post-scheduled', () => {
                     @endif
                 </div>
 
-                <div class="col-span-4" :class="{'col-span-4': threadStarted, 'col-span-6': !threadStarted}">
+                <div class="col-span-4" :class="{ 'col-span-4': threadStarted, 'col-span-6': !threadStarted }">
                     <form wire:submit.prevent="savePost">
                         <div class="relative mb-4">
                             <textarea wire:model="message" x-ref="textarea" rows="4" maxlength="280"
@@ -140,7 +140,14 @@ Livewire.on('post-scheduled', () => {
                         </div>
                         <div class="flex items-center space-x-3 mb-6">
                             <input type="file" class="hidden" x-ref="assetInput" wire:model="assetUpload"
-                                accept="image/*">
+                                accept="image/*"
+                                x-on:change="
+                                     console.log('File input changed:', $event.target.files);
+                                     if ($event.target.files.length > 0) {
+                                         console.log('Calling uploadAsset...');
+                                         $wire.uploadAsset();
+                                     }
+                                 ">
                             <button type="button"
                                 class="p-3 text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
                                 @click="$refs.assetInput.click()">
@@ -150,14 +157,17 @@ Livewire.on('post-scheduled', () => {
                                         d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
                                 </svg>
                             </button>
+
                             @if ($assetUpload)
                                 <button type="button" wire:click="uploadAsset"
-                                    class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">Add
-                                    to Message</button>
+                                    class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
+                                    <span wire:loading.remove wire:target="uploadAsset">Add to Message</span>
+                                    <span wire:loading wire:target="uploadAsset">Uploading...</span>
+                                </button>
                             @endif
                             <template x-if="$wire.message && $wire.message.match(/\[img:([a-zA-Z0-9]+)\]/)">
-                                <span class="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-xl">Image code
-                                    inserted</span>
+                                <span class="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-xl">Image
+                                    attached</span>
                             </template>
                             <div class="relative" x-data="{ showEmoji: false }">
                                 <button type="button"
@@ -528,8 +538,16 @@ Livewire.on('post-scheduled', () => {
     </div>
     <div>
         @if ($assetUpload)
-            <div class="p-4 bg-green-100 border border-green-400 text-green-700 rounded-xl">File selected:
-                {{ $assetUpload->getClientOriginalName() }}</div>
+            <div class="p-4 bg-blue-100 border border-blue-400 text-blue-700 rounded-xl">
+                <div class="flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                        stroke="currentColor" class="size-5 mr-2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-4.5-4.5V7.5a4.5 4.5 0 014.5-4.5h10.5a4.5 4.5 0 014.5 4.5v7.5a4.5 4.5 0 01-4.5 4.5H6.75z" />
+                    </svg>
+                    Uploading {{ $assetUpload->getClientOriginalName() }}...
+                </div>
+            </div>
         @endif
     </div>
 </div>
