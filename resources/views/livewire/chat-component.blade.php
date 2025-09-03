@@ -13,9 +13,9 @@
     },
     init() {
         this.$watch('$wire.message', value => {
-            this.canTweet = value && (value.trim().length > 0 || /\[img:([a-zA-Z0-9]+)\]/.test(value)) || $wire.threadMessages.length > 0;
+            this.canTweet = value && (value.trim().length > 0 || /\[(img|vid|gif):([a-zA-Z0-9]+)\]/.test(value)) || $wire.threadMessages.length > 0;
         });
-
+        
         this.$watch('$wire.threadMessages', messages => {
             if (messages && messages.length > 0) {
                 this.threadStarted = true;
@@ -23,20 +23,20 @@
         });
     }
 }" x-init="$watch('$wire.message', value => {
-    canTweet = value && (value.trim().length > 0 || /\[img:([a-zA-Z0-9]+)\]/.test(value)) || $wire.threadMessages.length > 0;
-});
-Livewire.on('tweet-posted', () => { threadStarted = false; });
-Livewire.on('thread-message-added', () => {
-    canTweet = true;
-    threadStarted = true;
-});
-Livewire.on('tweet-asset-uploaded', () => {
-    if (threadStarted) {
-        $wire.startThread();
-    }
-});
-Livewire.on('post-scheduled', () => {
-    showSchedulePicker = false;
+            canTweet = value && (value.trim().length > 0 || /\[(img|vid|gif):([a-zA-Z0-9]+)\]/.test(value)) || $wire.threadMessages.length > 0;
+        });
+        Livewire.on('tweet-posted', () => { threadStarted = false; });
+        Livewire.on('thread-message-added', () => { 
+            canTweet = true;
+            threadStarted = true;
+        });
+        Livewire.on('tweet-asset-uploaded', () => {
+            if (threadStarted) {
+                $wire.startThread();
+            }
+        });
+        Livewire.on('post-scheduled', () => {
+            showSchedulePicker = false;
 });">
     <!-- Tabs -->
     <div class="flex items-center bg-gray-100 p-1 rounded-xl mx-4 mt-4">
@@ -116,7 +116,7 @@ Livewire.on('post-scheduled', () => {
                         </div>
                     @endif
                 </div>
-
+                
                 <div class="col-span-4" :class="{ 'col-span-4': threadStarted, 'col-span-6': !threadStarted }">
                     <form wire:submit.prevent="savePost">
                         <div class="relative mb-4">
@@ -125,61 +125,62 @@ Livewire.on('post-scheduled', () => {
                                 class="w-full rounded-2xl border border-gray-300 px-6 py-4 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none text-gray-800 bg-white shadow-2xl shadow-gray-200 text-lg"
                                 @keyup="checkThread($event.target.value)"></textarea>
                             <div class="absolute bottom-3 right-6 text-sm bg-white px-3 py-1 rounded-xl shadow-lg"
-                                :class="{
-                                    'text-gray-400': $wire.message && $wire.message.length <= 260,
+                         :class="{
+                             'text-gray-400': $wire.message && $wire.message.length <= 260,
                                     'text-yellow-500': $wire.message && $wire.message.length > 260 && $wire.message
                                         .length <= 279,
-                                    'text-red-500': $wire.message && $wire.message.length > 279
-                                }">
-                                <span x-text="$wire.message ? $wire.message.length : 0"></span> / 279
+                             'text-red-500': $wire.message && $wire.message.length > 279
+                         }">
+                        <span x-text="$wire.message ? $wire.message.length : 0"></span> / 279
                                 <span x-show="$wire.message && $wire.message.length <= 280"
                                     class="text-green-500 ml-1">&#10003;</span>
                                 <span x-show="$wire.message && $wire.message.length > 280"
                                     class="text-red-500 ml-1">&#10005;</span>
-                            </div>
-                        </div>
+                    </div>
+                </div>
                         <div class="flex items-center space-x-3 mb-6">
-                            <input type="file" class="hidden" x-ref="assetInput" wire:model="assetUpload"
-                                accept="image/*"
-                                x-on:change="
-                                     console.log('File input changed:', $event.target.files);
-                                     if ($event.target.files.length > 0) {
-                                         console.log('Calling uploadAsset...');
-                                         $wire.uploadAsset();
-                                     }
-                                 ">
+                                                         <input type="file" class="hidden" x-ref="assetInput" wire:model.live="assetUpload"
+                                 accept="image/*">
                             <button type="button"
-                                class="p-3 text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
-                                @click="$refs.assetInput.click()">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                    stroke-width="1.5" stroke="currentColor" class="size-5">
-                                    <path stroke-linecap="round" stroke-linejoin="round"
-                                        d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                                </svg>
-                            </button>
+                                class="p-3 text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                @click="$refs.assetInput.click()"
+                                wire:loading.attr="disabled"
+                                wire:target="assetUpload">
+                                <div wire:loading.remove wire:target="assetUpload">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor" class="size-5">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                                    </svg>
+                                </div>
+                                <div wire:loading wire:target="assetUpload" class="flex items-center justify-center">
+                                    <svg class="animate-spin size-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                </div>
+                    </button>
 
-                            @if ($assetUpload)
-                                <button type="button" wire:click="uploadAsset"
-                                    class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
-                                    <span wire:loading.remove wire:target="uploadAsset">Add to Message</span>
-                                    <span wire:loading wire:target="uploadAsset">Uploading...</span>
-                                </button>
-                            @endif
-                            <template x-if="$wire.message && $wire.message.match(/\[img:([a-zA-Z0-9]+)\]/)">
-                                <span class="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-xl">Image
-                                    attached</span>
-                            </template>
-                            <div class="relative" x-data="{ showEmoji: false }">
+                            
+                    <template x-if="$wire.message && $wire.message.match(/\[(img|vid|gif):([a-zA-Z0-9]+)\]/)">
+                                <span class="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-xl flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                                    </svg>
+                                    Media attached
+                                </span>
+                    </template>
+                    <div class="relative" x-data="{ showEmoji: false }">
                                 <button type="button"
                                     class="p-3 text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
-                                    @click="showEmoji = !showEmoji">
+                            @click="showEmoji = !showEmoji">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                         stroke-width="1.5" stroke="currentColor" class="size-5">
                                         <path stroke-linecap="round" stroke-linejoin="round"
                                             d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
                                     </svg>
-                                </button>
-                                <div x-show="showEmoji" @click.away="showEmoji = false" class="absolute z-50 mt-2">
+                        </button>
+                        <div x-show="showEmoji" @click.away="showEmoji = false" class="absolute z-50 mt-2">
                                     <emoji-picker
                                         @emoji-click="
                                 showEmoji = false;
@@ -193,8 +194,8 @@ Livewire.on('post-scheduled', () => {
                                 textarea.focus();
                                 textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
                             "></emoji-picker>
-                                </div>
-                            </div>
+                        </div>
+                    </div>
                             {{-- <button class="p-3 text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer" type="button">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
@@ -215,7 +216,7 @@ Livewire.on('post-scheduled', () => {
                                             class='bx bx-loader-alt bx-spin'></i></span>
                                 </button>
                             </template>
-                        </div>
+                </div>
                         <div class="mb-6 relative">
                             <button type="button"
                                 @click="if (!assetPickerOpen) { $wire.loadUserAssets(); } assetPickerOpen = !assetPickerOpen"
@@ -224,20 +225,20 @@ Livewire.on('post-scheduled', () => {
                             <div x-show="assetPickerOpen"
                                 class="absolute z-50 mt-2 w-64 bg-white border border-gray-300 rounded-2xl shadow-2xl shadow-gray-200 max-h-48 overflow-y-auto"
                                 @click.away="assetPickerOpen = false">
-                                @forelse ($userAssets as $asset)
+                        @forelse ($userAssets as $asset)
                                     <button type="button"
                                         @click.prevent="$wire.selectAsset('{{ $asset->code }}'); assetPickerOpen = false;"
                                         class="flex items-center w-full px-4 py-3 hover:bg-blue-50 rounded-xl transition-colors">
-                                        <img src="{{ asset('storage/' . $asset->path) }}" alt="asset"
+                                        <img src="{{ $asset->path }}" alt="asset"
                                             class="w-12 h-12 object-cover rounded-xl mr-3">
                                         <span
                                             class="text-sm text-gray-600 truncate">{{ $asset->original_name }}</span>
-                                    </button>
-                                @empty
+                            </button>
+                        @empty
                                     <div class="p-4 text-sm text-gray-400">No assets found.</div>
-                                @endforelse
-                            </div>
-                        </div>
+                        @endforelse
+                    </div>
+                </div>
                         <div class="flex items-center space-x-2 space-y-2 flex-wrap">
                             <button type="submit"
                                 class="flex-1 px-6 py-3 bg-gradient-to-r from-green-400 to-green-600 text-white font-medium rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors cursor-pointer shadow-2xl shadow-gray-200"
@@ -248,12 +249,12 @@ Livewire.on('post-scheduled', () => {
                                     <i class='bx bx-loader-alt bx-spin'></i>
                                     Posting...
                                 </span>
-                            </button>
+                    </button>
                             <div class="relative flex-1">
                                 <button type="button" @click="showSchedulePicker = !showSchedulePicker"
                                     class="px-6 py-3 bg-gradient-to-r from-blue-400 to-blue-600 text-white w-full font-medium rounded-xl hover:bg-blue-700 transition-colors cursor-pointer shadow-2xl shadow-gray-200 flex items-center text-nowrap"
                                     :class="{ 'bg-blue-700': showSchedulePicker }" :disabled="!canTweet">
-                                    Add to Queue
+                            Add to Queue
                                     <span
                                         class="ml-2 text-sm">{{ $scheduledDateTime ? \Carbon\Carbon::parse($scheduledDateTime)->format('M jS, Y, g:i A') : 'Select time' }}</span>
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
@@ -287,15 +288,15 @@ Livewire.on('post-scheduled', () => {
                                             <span wire:loading.remove wire:target="schedulePost">Schedule Post</span>
                                             <span wire:loading wire:target="schedulePost"><i
                                                     class='bx bx-loader-alt bx-spin'></i></span>
-                                        </button>
+                        </button>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                    </div>
                     </form>
                 </div>
-            </div>
-            <!-- Advanced Options -->
+                </div>
+                <!-- Advanced Options -->
             {{-- <div class="mt-4">
                     <button type="button" class="flex items-center text-gray-600 hover:text-blue-700 focus:outline-none" onclick="document.getElementById('adv-options').classList.toggle('hidden')">
                         <span class="mr-2">Advanced Options</span>
@@ -321,13 +322,14 @@ Livewire.on('post-scheduled', () => {
                                     <div class="text-gray-900 whitespace-pre-wrap">{{ $post->content }}</div>
                                     @if (Str::contains($post->content, '[img:'))
                                         <div class="mt-2 flex flex-wrap gap-2">
-                                            @foreach (array_filter(explode(' ', $post->content), fn($part) => Str::startsWith($part, '[img:')) as $imgCode)
+                                            @foreach (array_filter(explode(' ', $post->content), fn($part) => preg_match('/\[(img|vid|gif):/', $part)) as $assetCode)
                                                 @php
-                                                    $code = Str::between($imgCode, '[img:', ']');
+                                                    preg_match('/\[(img|vid|gif):([a-zA-Z0-9]+)\]/', $assetCode, $matches);
+                                                    $code = $matches[2] ?? '';
                                                     $asset = App\Models\Asset::where('code', $code)->first();
                                                 @endphp
                                                 @if ($asset)
-                                                    <img src="{{ asset('storage/' . $asset->path) }}"
+                                                    <img src="{{ $asset->path }}"
                                                         alt="Post image" class="h-16 w-16 object-cover rounded-md">
                                                 @endif
                                             @endforeach
@@ -335,7 +337,7 @@ Livewire.on('post-scheduled', () => {
                                     @endif
                                 </div>
                                 <div class="flex items-center gap-2">
-                                    <button wire:click="editScheduledPost({{ $post->id }})"
+                                    <button wire:click="editScheduledPost({{ $post->id }})" 
                                         class="p-3 text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 hover:bg-blue-200 rounded-xl transition-colors cursor-pointer">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                             stroke-width="1.5" stroke="currentColor" class="size-5">
@@ -343,7 +345,7 @@ Livewire.on('post-scheduled', () => {
                                                 d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
                                         </svg>
                                     </button>
-                                    <button wire:click="deleteScheduledPost({{ $post->id }})"
+                                    <button wire:click="deleteScheduledPost({{ $post->id }})" 
                                         class="p-3 text-red-600 bg-gradient-to-r from-red-100 to-red-200 hover:bg-red-200 rounded-xl transition-colors cursor-pointer">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                             stroke-width="1.5" stroke="currentColor" class="size-5">
@@ -400,7 +402,7 @@ Livewire.on('post-scheduled', () => {
             @if (count($drafts) > 0)
                 <div class="space-y-4 overflow-y-auto h-[80%]">
                     @foreach ($drafts as $draft)
-                        <button wire:click="continueDraft({{ $draft->id }})" type="button"
+                        <button wire:click="continueDraft({{ $draft->id }})" type="button" 
                             class="w-full text-left bg-white rounded-2xl shadow-2xl shadow-gray-200 p-6 hover:shadow-3xl hover:shadow-yellow-200 transition-all duration-300 border border-gray-100">
                             <div class="flex justify-between items-start mb-3">
                                 <div class="flex-1 pr-4">
@@ -413,7 +415,7 @@ Livewire.on('post-scheduled', () => {
                                                     $asset = App\Models\Asset::where('code', $code)->first();
                                                 @endphp
                                                 @if ($asset)
-                                                    <img src="{{ asset('storage/' . $asset->path) }}"
+                                                    <img src="{{ $asset->path }}"
                                                         alt="Draft image" class="h-16 w-16 object-cover rounded-md">
                                                 @endif
                                             @endforeach
@@ -460,7 +462,7 @@ Livewire.on('post-scheduled', () => {
             @if (count($sentPosts ?? []) > 0)
                 <div class="mb-6 flex justify-between items-center">
                     <h2 class="text-xl font-bold text-gray-900">Sent Posts</h2>
-                    <button wire:click="clearAllSentPosts"
+                    <button wire:click="clearAllSentPosts" 
                         wire:confirm="Are you sure you want to clear all sent posts? This cannot be undone."
                         class="px-4 py-2 text-sm font-medium text-red-600 bg-gradient-to-r from-red-100 to-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer">
                         Clear All
@@ -474,13 +476,14 @@ Livewire.on('post-scheduled', () => {
                                     <div class="text-gray-900 whitespace-pre-wrap">{{ $post->content }}</div>
                                     @if (Str::contains($post->content, '[img:'))
                                         <div class="mt-2 flex flex-wrap gap-2">
-                                            @foreach (array_filter(explode(' ', $post->content), fn($part) => Str::startsWith($part, '[img:')) as $imgCode)
+                                            @foreach (array_filter(explode(' ', $post->content), fn($part) => preg_match('/\[(img|vid|gif):/', $part)) as $assetCode)
                                                 @php
-                                                    $code = Str::between($imgCode, '[img:', ']');
+                                                    preg_match('/\[(img|vid|gif):([a-zA-Z0-9]+)\]/', $assetCode, $matches);
+                                                    $code = $matches[2] ?? '';
                                                     $asset = App\Models\Asset::where('code', $code)->first();
                                                 @endphp
                                                 @if ($asset)
-                                                    <img src="{{ asset('storage/' . $asset->path) }}"
+                                                    <img src="{{ $asset->path }}"
                                                         alt="Sent image" class="h-16 w-16 object-cover rounded-md">
                                                 @endif
                                             @endforeach
@@ -532,7 +535,7 @@ Livewire.on('post-scheduled', () => {
                             Click "Tweet now" to post your first tweet
                         </p>
                     </div>
-                </div>
+            </div>
             @endif
         @endif
     </div>

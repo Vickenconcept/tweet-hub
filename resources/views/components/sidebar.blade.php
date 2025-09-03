@@ -62,6 +62,13 @@
                         <span>User Management</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ route('assets') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('assets') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">
+                        <i class="bx bx-image text-xl {{ request()->routeIs('assets') ? 'text-black' : 'text-indigo-200 group-hover:text-white' }}"></i>
+                        <span>My Assets</span>
+                    </a>
+                </li>
            
                 {{-- <li>
                     <a href="{{ route('reseller.index') }}"
