@@ -3,69 +3,13 @@
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-900">User Management</h2>
-        <div class="flex items-center space-x-3">
-            <button wire:click="loadBasicUserInfo" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-green-100 rounded-lg hover:bg-green-200 disabled:opacity-50 transition-colors">
-                <i class="bx bx-user mr-2"></i>
-                <span wire:loading.remove>Load Basic Info</span>
-                <span wire:loading>Loading...</span>
-            </button>
-            <button wire:click="checkRateLimits" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-orange-100 rounded-lg hover:bg-orange-200 disabled:opacity-50 transition-colors">
-                <i class="bx bx-time mr-2"></i>
-                <span wire:loading.remove>Check Cache</span>
-                <span wire:loading>Checking...</span>
-            </button>
-            <button wire:click="checkApiEndpoints" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-yellow-100 rounded-lg hover:bg-yellow-200 disabled:opacity-50 transition-colors">
-                <i class="bx bx-list-check mr-2"></i>
-                <span wire:loading.remove>Check Endpoints</span>
-                <span wire:loading>Checking...</span>
-            </button>
-            <button wire:click="testApiConnection" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
-                <i class="bx bx-test-tube mr-2"></i>
-                <span wire:loading.remove>Test API</span>
-                <span wire:loading>Testing...</span>
-            </button>
-            <button wire:click="clearAllCache" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 disabled:opacity-50 transition-colors">
-                <i class="bx bx-trash mr-2"></i>
-                <span wire:loading.remove>Clear Cache</span>
-                <span wire:loading>Clearing...</span>
-            </button>
-            <button wire:click="checkApiAccessLevel" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                <i class="bx bx-shield-check mr-2"></i>
-                <span wire:loading.remove>Check API Plan</span>
-                <span wire:loading>Checking...</span>
-            </button>
-            <button wire:click="updateTwitterProfile" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
-                <i class="bx bx-refresh mr-2"></i>
-                <span wire:loading.remove>Update Profile</span>
-                <span wire:loading>Updating...</span>
-            </button>
-            <button wire:click="showApiUpgradeGuide" 
-                    class="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors">
-                <i class="bx bx-info-circle mr-2"></i>
-                API Upgrade Guide
-            </button>
-            <button wire:click="refreshData" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                <i class="bx bx-refresh mr-2"></i>
-                <span wire:loading.remove>Refresh</span>
-                <span wire:loading>Refreshing...</span>
-            </button>
-        </div>
+        <button wire:click="refreshData" 
+                wire:loading.attr="disabled"
+                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            <i class="bx bx-refresh mr-2"></i>
+            <span wire:loading.remove>Refresh Data</span>
+            <span wire:loading>Refreshing...</span>
+        </button>
     </div>
 
     <!-- Info Box -->
@@ -73,14 +17,8 @@
         <div class="flex items-start">
             <i class="bx bx-info-circle text-blue-500 mr-2 mt-0.5"></i>
             <div class="text-sm text-blue-700">
-                <p class="font-medium mb-1">Twitter API Requirements</p>
-                <p>This feature requires <strong>Elevated Access</strong> to the Twitter API v2. If you're seeing access denied errors, you may need to:</p>
-                <ul class="list-disc list-inside mt-2 space-y-1">
-                    <li>Apply for Elevated access in your Twitter Developer Portal</li>
-                    <li>Ensure your app has the required OAuth 2.0 scopes</li>
-                    <li>Check that your API keys have the right permissions</li>
-                </ul>
-                <p class="mt-2"><strong>Note:</strong> Even with proper access, Twitter API has strict rate limits. Use the "Check Cache" button to see what's currently available, and "Clear Cache" to force fresh API calls.</p>
+                <p class="font-medium mb-1">Your Twitter Account Data</p>
+                <p>View your followers, following, blocked, and muted users. Click refresh to update the data.</p>
             </div>
         </div>
     </div>
@@ -192,13 +130,12 @@
 
     <!-- Loading State -->
     @if($loading)
-        <div class="text-center py-12">
-            <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm text-white bg-blue-600 rounded-md">
-                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Loading users...
+        <div class="text-center py-12 text-gray-500">
+            <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
+                <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Loading User Data...</h3>
+                <p class="text-gray-600 mb-4">Fetching your followers, following, blocked, and muted users</p>
+                <p class="text-xs text-gray-500">This may take a few moments...</p>
             </div>
         </div>
     @else
@@ -212,64 +149,30 @@
                             <div class="flex items-center space-x-3">
                                 <img src="{{ $user->profile_image_url ?? 'https://via.placeholder.com/40x40' }}" 
                                      alt="{{ $user->name ?? 'User' }}" 
-                                     class="w-10 h-10 rounded-full">
+                                     class="w-12 h-12 rounded-full">
                                 <div>
                                     <h3 class="font-medium text-gray-900">{{ $user->name ?? 'Unknown User' }}</h3>
                                     <p class="text-sm text-gray-500">@{{ $user->username ?? 'unknown' }}</p>
                                     @if(isset($user->description))
-                                        <p class="text-sm text-gray-600 mt-1">{{ Str::limit($user->description, 100) }}</p>
+                                        <p class="text-sm text-gray-600 mt-1">{{ Str::limit($user->description, 120) }}</p>
+                                    @endif
+                                    @if(isset($user->public_metrics))
+                                        <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+                                            <span><i class="bx bx-user mr-1"></i>{{ $user->public_metrics->followers_count ?? 0 }} followers</span>
+                                            <span><i class="bx bx-user-plus mr-1"></i>{{ $user->public_metrics->following_count ?? 0 }} following</span>
+                                            <span><i class="bx bx-message mr-1"></i>{{ $user->public_metrics->tweet_count ?? 0 }} tweets</span>
+                                        </div>
                                     @endif
                                 </div>
                             </div>
 
-                            <!-- Action Buttons -->
+                            <!-- View Profile Link -->
                             <div class="flex items-center space-x-2">
-                                @if($activeTab === 'followers')
-                                    <button wire:click="followUser('{{ $user->id }}')" 
-                                            wire:loading.attr="disabled"
-                                            class="px-3 py-1 text-sm text-blue-600 hover:bg-blue-100 rounded-lg transition-colors">
-                                        <i class="bx bx-user-plus mr-1"></i> Follow
-                                    </button>
-                                @elseif($activeTab === 'following')
-                                    <button wire:click="unfollowUser('{{ $user->id }}')" 
-                                            wire:loading.attr="disabled"
-                                            class="px-3 py-1 text-sm text-red-600 hover:bg-red-100 rounded-lg transition-colors">
-                                        <i class="bx bx-user-minus mr-1"></i> Unfollow
-                                    </button>
-                                @elseif($activeTab === 'blocked')
-                                    <button wire:click="unblockUser('{{ $user->id }}')" 
-                                            wire:loading.attr="disabled"
-                                            class="px-3 py-1 text-sm text-green-600 hover:bg-green-100 rounded-lg transition-colors">
-                                        <i class="bx bx-user-check mr-1"></i> Unblock
-                                    </button>
-                                @elseif($activeTab === 'muted')
-                                    <button wire:click="unmuteUser('{{ $user->id }}')" 
-                                            wire:loading.attr="disabled"
-                                            class="px-3 py-1 text-sm text-green-600 hover:bg-green-100 rounded-lg transition-colors">
-                                        <i class="bx bx-volume-full mr-1"></i> Unmute
-                                    </button>
-                                @endif
-
-                                <!-- Additional Actions -->
-                                @if($activeTab === 'followers' || $activeTab === 'following')
-                                    <button wire:click="muteUser('{{ $user->id }}')" 
-                                            wire:loading.attr="disabled"
-                                            class="px-3 py-1 text-sm text-orange-600 hover:bg-orange-100 rounded-lg transition-colors">
-                                        <i class="bx bx-volume-mute mr-1"></i> Mute
-                                    </button>
-                                    <button wire:click="blockUser('{{ $user->id }}')" 
-                                            wire:loading.attr="disabled"
-                                            class="px-3 py-1 text-sm text-red-600 hover:bg-red-100 rounded-lg transition-colors">
-                                        <i class="bx bx-block mr-1"></i> Block
-                                    </button>
-                                @endif
-
-                                <!-- View Profile Link -->
                                 <a href="https://twitter.com/{{ $user->username ?? 'unknown' }}" 
                                    target="_blank" 
                                    rel="noopener noreferrer"
-                                   class="px-3 py-1 text-sm text-purple-600 hover:bg-purple-100 rounded-lg transition-colors">
-                                    <i class="bx bx-external-link mr-1"></i> View
+                                   class="px-3 py-2 text-sm text-blue-600 hover:bg-blue-100 rounded-lg transition-colors flex items-center">
+                                    <i class="bx bx-external-link mr-1"></i> View Profile
                                 </a>
                             </div>
                         </div>
@@ -350,34 +253,4 @@
         @endif
     @endif
 
-    <!-- Confirmation Modal -->
-    @if($showConfirmModal)
-        <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" wire:click="closeConfirmModal">
-            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" wire:click.stop>
-                <div class="mt-3 text-center">
-                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                        <i class="bx bx-question-mark text-yellow-600 text-xl"></i>
-                    </div>
-                    <h3 class="text-lg font-medium text-gray-900 mt-4">Confirm Action</h3>
-                    <div class="mt-2 px-7 py-3">
-                        <p class="text-sm text-gray-500">
-                            Are you sure you want to {{ strtolower($actionMessage) }}?
-                        </p>
-                    </div>
-                    <div class="items-center px-4 py-3">
-                        <button wire:click="confirmAction" 
-                                wire:loading.attr="disabled"
-                                class="px-4 py-2 bg-blue-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
-                            <span wire:loading.remove>Confirm</span>
-                            <span wire:loading>Processing...</span>
-                        </button>
-                        <button wire:click="closeConfirmModal" 
-                                class="px-4 py-2 bg-gray-300 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    @endif
 </div>

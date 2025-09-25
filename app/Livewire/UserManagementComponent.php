@@ -26,13 +26,6 @@ class UserManagementComponent extends Component
     public $blockedUsers = [];
     public $mutedUsers = [];
     public $basicUserInfo = null;
-    public $rateLimitInfo = null;
-
-    // Action properties
-    public $selectedUser = null;
-    public $showConfirmModal = false;
-    public $actionType = '';
-    public $actionMessage = '';
 
     protected $queryString = ['activeTab'];
 
@@ -41,71 +34,18 @@ class UserManagementComponent extends Component
         $this->loadData();
     }
 
-    public function loadBasicUserInfo()
-    {
-        $this->loading = true;
-        $this->errorMessage = '';
-
-        try {
-            $settings = $this->getTwitterSettings();
-            $twitterService = new TwitterService($settings);
-            
-            // Check if we have cached data first
-            $cacheKey = 'twitter_user_info_' . Auth::user()->id;
-            $cachedData = Cache::get($cacheKey);
-            
-            if ($cachedData && $cachedData['expires_at'] > now()) {
-                // Use cached data
-                $this->basicUserInfo = $cachedData['data'];
-                $this->successMessage = 'Basic user info loaded from cache!';
-                $this->loading = false;
-                return;
-            }
-            
-            // Try to get fresh user info
-            $me = $twitterService->findMe();
-            if ($me && isset($me->data)) {
-                $this->basicUserInfo = $me->data;
-                $this->successMessage = 'Basic user info loaded successfully!';
-                
-                // Update user profile information if missing
-                $user = Auth::user();
-                if (!$user->twitter_username || !$user->twitter_name || !$user->twitter_profile_image_url) {
-                    $user->twitter_username = $me->data->username ?? $user->twitter_username;
-                    $user->twitter_name = $me->data->name ?? $user->twitter_name;
-                    $user->twitter_profile_image_url = $me->data->profile_image_url ?? $user->twitter_profile_image_url;
-                    $user->save();
-                }
-                
-                // Cache the data for 10 minutes (well within the 15-minute rate limit window)
-                Cache::put($cacheKey, [
-                    'data' => $me->data,
-                    'expires_at' => now()->addMinutes(10)
-                ], 600);
-            } else {
-                $this->errorMessage = 'Unable to load basic user info';
-            }
-            
-        } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to load basic user info: ' . $e->getMessage();
-        } finally {
-            $this->loading = false;
-        }
-    }
-
     public function loadData()
     {
-        if (!Auth::user() || !Auth::user()->twitter_account_id) {
-            $this->errorMessage = 'Please connect your Twitter account first.';
-            return;
-        }
-
         $this->loading = true;
         $this->errorMessage = '';
+        $this->successMessage = '';
 
         try {
             $settings = $this->getTwitterSettings();
             $twitterService = new TwitterService($settings);
+
+            // Load basic user info
+            $this->loadBasicUserInfo($twitterService);
 
             // Load data based on active tab
             switch ($this->activeTab) {
@@ -123,157 +63,145 @@ class UserManagementComponent extends Component
                     break;
             }
 
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
-            $body = $e->getResponse()->getBody()->getContents();
-            
-            if ($statusCode === 403) {
-                $this->errorMessage = 'Access denied. The followers/following endpoints require elevated Twitter API access (Basic, Pro, or Enterprise). Your Twitter Developer App needs to be upgraded to a higher access level. This is an app-level setting, not a user-level setting.';
-            } elseif ($statusCode === 429) {
-                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has strict rate limits for user relationship endpoints.';
-            } else {
-                $this->errorMessage = 'Failed to load data: ' . $e->getMessage();
-            }
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to load data: ' . $e->getMessage();
+            Log::error('Failed to load user management data', ['error' => $e->getMessage()]);
         } finally {
             $this->loading = false;
+        }
+    }
+
+    private function loadBasicUserInfo($twitterService)
+    {
+        try {
+            $cacheKey = 'twitter_user_info_' . Auth::user()->id;
+            $cachedData = Cache::get($cacheKey);
+
+            if ($cachedData && $cachedData['expires_at'] > now()) {
+                $this->basicUserInfo = $cachedData['data'];
+                return;
+            }
+
+            $me = $twitterService->findMe();
+            if ($me && isset($me->data)) {
+                $this->basicUserInfo = $me->data;
+
+                // Cache the data for 10 minutes
+                Cache::put($cacheKey, [
+                    'data' => $me->data,
+                    'expires_at' => now()->addMinutes(10)
+                ], 600);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to load basic user info', ['error' => $e->getMessage()]);
         }
     }
 
     private function loadFollowers($twitterService)
     {
         try {
-            // Check cache first
             $cacheKey = 'twitter_followers_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-            
+
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->followers = $cachedData['data'];
                 return;
             }
-            
-            // Get fresh data
-            $result = $twitterService->getFollowers();
-            $this->followers = $result->data ?? [];
-            
-            // Cache for 10 minutes
-            Cache::put($cacheKey, [
-                'data' => $this->followers,
-                'expires_at' => now()->addMinutes(10)
-            ], 600);
-            
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
-            if ($statusCode === 403) {
-                $this->errorMessage = 'Access denied. Followers endpoint requires elevated Twitter API access. Your Twitter Developer App needs to be upgraded to Basic, Pro, or Enterprise access level.';
-            } else {
-                $this->errorMessage = 'Failed to load followers: ' . $e->getMessage();
+
+            $followers = $twitterService->getFollowers(Auth::user()->twitter_account_id);
+            if ($followers && isset($followers->data)) {
+                $this->followers = $followers->data;
+
+                // Cache the data for 15 minutes
+                Cache::put($cacheKey, [
+                    'data' => $followers->data,
+                    'expires_at' => now()->addMinutes(15)
+                ], 900);
             }
         } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to load followers: ' . $e->getMessage();
+            Log::warning('Failed to load followers', ['error' => $e->getMessage()]);
+            $this->followers = [];
         }
     }
 
     private function loadFollowing($twitterService)
     {
         try {
-            // Check cache first
             $cacheKey = 'twitter_following_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-            
+
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->following = $cachedData['data'];
                 return;
             }
-            
-            // Get fresh data
-            $result = $twitterService->getFollowing();
-            $this->following = $result->data ?? [];
-            
-            // Cache for 10 minutes
-            Cache::put($cacheKey, [
-                'data' => $this->following,
-                'expires_at' => now()->addMinutes(10)
-            ], 600);
-            
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
-            if ($statusCode === 403) {
-                $this->errorMessage = 'Access denied. Following endpoint requires elevated Twitter API access. Your Twitter Developer App needs to be upgraded to Basic, Pro, or Enterprise access level.';
-            } else {
-                $this->errorMessage = 'Failed to load following: ' . $e->getMessage();
+
+            $following = $twitterService->getFollowing(Auth::user()->twitter_account_id);
+            if ($following && isset($following->data)) {
+                $this->following = $following->data;
+
+                // Cache the data for 15 minutes
+                Cache::put($cacheKey, [
+                    'data' => $following->data,
+                    'expires_at' => now()->addMinutes(15)
+                ], 900);
             }
         } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to load following: ' . $e->getMessage();
+            Log::warning('Failed to load following', ['error' => $e->getMessage()]);
+            $this->following = [];
         }
     }
 
     private function loadBlockedUsers($twitterService)
     {
         try {
-            // Check cache first
             $cacheKey = 'twitter_blocked_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-            
+
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->blockedUsers = $cachedData['data'];
                 return;
             }
-            
-            // Get fresh data
-            $result = $twitterService->getBlockedUsers();
-            $this->blockedUsers = $result->data ?? [];
-            
-            // Cache for 10 minutes
-            Cache::put($cacheKey, [
-                'data' => $this->blockedUsers,
-                'expires_at' => now()->addMinutes(10)
-            ], 600);
-            
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
-            if ($statusCode === 403) {
-                $this->errorMessage = 'Access denied. Blocked users endpoint requires elevated Twitter API access. Your Twitter Developer App needs to be upgraded to Basic, Pro, or Enterprise access level.';
-            } else {
-                $this->errorMessage = 'Failed to load blocked users: ' . $e->getMessage();
+
+            $blocked = $twitterService->getBlockedUsers(Auth::user()->twitter_account_id);
+            if ($blocked && isset($blocked->data)) {
+                $this->blockedUsers = $blocked->data;
+
+                // Cache the data for 15 minutes
+                Cache::put($cacheKey, [
+                    'data' => $blocked->data,
+                    'expires_at' => now()->addMinutes(15)
+                ], 900);
             }
         } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to load blocked users: ' . $e->getMessage();
+            Log::warning('Failed to load blocked users', ['error' => $e->getMessage()]);
+            $this->blockedUsers = [];
         }
     }
 
     private function loadMutedUsers($twitterService)
     {
         try {
-            // Check cache first
             $cacheKey = 'twitter_muted_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-            
+
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->mutedUsers = $cachedData['data'];
                 return;
             }
-            
-            // Get fresh data
-            $result = $twitterService->getMutedUsers();
-            $this->mutedUsers = $result->data ?? [];
-            
-            // Cache for 10 minutes
-            Cache::put($cacheKey, [
-                'data' => $this->mutedUsers,
-                'expires_at' => now()->addMinutes(10)
-            ], 600);
-            
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
-            if ($statusCode === 403) {
-                $this->errorMessage = 'Access denied. Muted users endpoint requires elevated Twitter API access. Your Twitter Developer App needs to be upgraded to Basic, Pro, or Enterprise access level.';
-            } else {
-                $this->errorMessage = 'Failed to load muted users: ' . $e->getMessage();
+
+            $muted = $twitterService->getMutedUsers(Auth::user()->twitter_account_id);
+            if ($muted && isset($muted->data)) {
+                $this->mutedUsers = $muted->data;
+
+                // Cache the data for 15 minutes
+                Cache::put($cacheKey, [
+                    'data' => $muted->data,
+                    'expires_at' => now()->addMinutes(15)
+                ], 900);
             }
         } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to load muted users: ' . $e->getMessage();
+            Log::warning('Failed to load muted users', ['error' => $e->getMessage()]);
+            $this->mutedUsers = [];
         }
     }
 
@@ -284,106 +212,6 @@ class UserManagementComponent extends Component
         $this->loadData();
     }
 
-    public function followUser($userId)
-    {
-        $this->performUserAction('follow', $userId, 'Follow user');
-    }
-
-    public function unfollowUser($userId)
-    {
-        $this->performUserAction('unfollow', $userId, 'Unfollow user');
-    }
-
-    public function muteUser($userId)
-    {
-        $this->performUserAction('mute', $userId, 'Mute user');
-    }
-
-    public function unmuteUser($userId)
-    {
-        $this->performUserAction('unmute', $userId, 'Unmute user');
-    }
-
-    public function blockUser($userId)
-    {
-        $this->performUserAction('block', $userId, 'Block user');
-    }
-
-    public function unblockUser($userId)
-    {
-        $this->performUserAction('unblock', $userId, 'Unblock user');
-    }
-
-    private function performUserAction($action, $userId, $actionMessage)
-    {
-        $this->selectedUser = $userId;
-        $this->actionType = $action;
-        $this->actionMessage = $actionMessage;
-        $this->showConfirmModal = true;
-    }
-
-    public function confirmAction()
-    {
-        if (!$this->selectedUser || !$this->actionType) {
-            return;
-        }
-
-        $this->loading = true;
-        $this->errorMessage = '';
-        $this->successMessage = '';
-
-        try {
-            $settings = $this->getTwitterSettings();
-            $twitterService = new TwitterService($settings);
-
-            switch ($this->actionType) {
-                case 'follow':
-                    $twitterService->followUser($this->selectedUser);
-                    $this->successMessage = 'User followed successfully!';
-                    break;
-                case 'unfollow':
-                    $twitterService->unfollowUser($this->selectedUser);
-                    $this->successMessage = 'User unfollowed successfully!';
-                    break;
-                case 'mute':
-                    $twitterService->muteUser($this->selectedUser);
-                    $this->successMessage = 'User muted successfully!';
-                    break;
-                case 'unmute':
-                    $twitterService->unmuteUser($this->selectedUser);
-                    $this->successMessage = 'User unmuted successfully!';
-                    break;
-                case 'block':
-                    // Note: Twitter API v2 doesn't have direct block endpoint in this library
-                    $this->errorMessage = 'Block functionality not available in current API version.';
-                    break;
-                case 'unblock':
-                    // Note: Twitter API v2 doesn't have direct unblock endpoint in this library
-                    $this->errorMessage = 'Unblock functionality not available in current API version.';
-                    break;
-            }
-
-            // Reload data after successful action
-            if (empty($this->errorMessage)) {
-                $this->loadData();
-            }
-
-        } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to perform action: ' . $e->getMessage();
-        } finally {
-            $this->loading = false;
-            $this->closeConfirmModal();
-        }
-    }
-
-    public function closeConfirmModal()
-    {
-        $this->showConfirmModal = false;
-        $this->selectedUser = null;
-        $this->actionType = '';
-        $this->actionMessage = '';
-    }
-
     public function clearMessages()
     {
         $this->errorMessage = '';
@@ -392,340 +220,25 @@ class UserManagementComponent extends Component
 
     public function refreshData()
     {
+        $this->clearCache();
         $this->loadData();
         $this->successMessage = 'Data refreshed successfully!';
     }
 
-    public function testApiConnection()
-    {
-        $this->loading = true;
-        $this->errorMessage = '';
-        $this->successMessage = '';
-
-        try {
-            $settings = $this->getTwitterSettings();
-            $twitterService = new TwitterService($settings);
-            
-            // Test basic connectivity first
-            $me = $twitterService->findMe();
-            if ($me && isset($me->data)) {
-                $this->successMessage = 'Basic API connection successful! User ID: ' . $me->data->id . ', Username: @' . $me->data->username;
-            } else {
-                $this->errorMessage = 'Basic API connection failed - unable to get user info';
-            }
-            
-        } catch (\Exception $e) {
-            $this->errorMessage = 'API connection test failed: ' . $e->getMessage();
-        } finally {
-            $this->loading = false;
-        }
-    }
-
-    public function checkApiEndpoints()
-    {
-        $this->loading = true;
-        $this->errorMessage = '';
-        $this->successMessage = '';
-
-        try {
-            $settings = $this->getTwitterSettings();
-            $twitterService = new TwitterService($settings);
-            
-            $status = [];
-            
-            // Test basic user lookup
-            try {
-                $me = $twitterService->findMe();
-                $status[] = '✅ Basic user info (findMe)';
-            } catch (\Exception $e) {
-                $status[] = '❌ Basic user info (findMe): ' . $e->getMessage();
-            }
-            
-            // Test mentions (we know this works)
-            try {
-                $mentions = $twitterService->getRecentMentions(Auth::user()->twitter_account_id);
-                $status[] = '✅ Recent mentions';
-            } catch (\Exception $e) {
-                $status[] = '❌ Recent mentions: ' . $e->getMessage();
-            }
-            
-            // Test followers
-            try {
-                $followers = $twitterService->getFollowers();
-                $status[] = '✅ Followers list';
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-                if ($e->getResponse()->getStatusCode() === 403) {
-                    $status[] = '❌ Followers list: Requires elevated API access (Basic/Pro/Enterprise)';
-                } else {
-                    $status[] = '❌ Followers list: ' . $e->getMessage();
-                }
-            } catch (\Exception $e) {
-                $status[] = '❌ Followers list: ' . $e->getMessage();
-            }
-            
-            // Test following
-            try {
-                $following = $twitterService->getFollowing();
-                $status[] = '✅ Following list';
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-                if ($e->getResponse()->getStatusCode() === 403) {
-                    $status[] = '❌ Following list: Requires elevated API access (Basic/Pro/Enterprise)';
-                } else {
-                    $status[] = '❌ Following list: ' . $e->getMessage();
-                }
-            } catch (\Exception $e) {
-                $status[] = '❌ Following list: ' . $e->getMessage();
-            }
-            
-            $this->successMessage = 'API Endpoint Status:<br>' . implode('<br>', $status);
-            
-        } catch (\Exception $e) {
-            $this->errorMessage = 'API endpoint check failed: ' . $e->getMessage();
-        } finally {
-            $this->loading = false;
-        }
-    }
-
-    public function checkRateLimits()
-    {
-        $this->loading = true;
-        $this->errorMessage = '';
-        $this->successMessage = '';
-
-        try {
-            $settings = $this->getTwitterSettings();
-            $twitterService = new TwitterService($settings);
-            
-            // Check what's in cache
-            $cacheKey = 'twitter_user_info_' . Auth::user()->id;
-            $cachedData = Cache::get($cacheKey);
-            
-            $status = [];
-            
-            if ($cachedData) {
-                $remainingTime = $cachedData['expires_at']->diffInSeconds(now());
-                $status[] = "✅ Cached user info available for {$remainingTime} more seconds";
-            } else {
-                $status[] = "❌ No cached user info available";
-            }
-            
-            // Check other cached data
-            $followersCache = Cache::get('twitter_followers_' . Auth::user()->id);
-            $followingCache = Cache::get('twitter_following_' . Auth::user()->id);
-            
-            if ($followersCache) {
-                $remainingTime = $followersCache['expires_at']->diffInSeconds(now());
-                $status[] = "✅ Cached followers available for {$remainingTime} more seconds";
-            } else {
-                $status[] = "❌ No cached followers available";
-            }
-            
-            if ($followingCache) {
-                $remainingTime = $followingCache['expires_at']->diffInSeconds(now());
-                $status[] = "✅ Cached following available for {$remainingTime} more seconds";
-            } else {
-                $status[] = "❌ No cached following available";
-            }
-            
-            $this->successMessage = 'Rate Limit & Cache Status:<br>' . implode('<br>', $status);
-            
-        } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to check rate limits: ' . $e->getMessage();
-        } finally {
-            $this->loading = false;
-        }
-    }
-
-    public function clearAllCache()
+    private function clearCache()
     {
         $userId = Auth::user()->id;
-        
-        Cache::forget('twitter_user_info_' . $userId);
-        Cache::forget('twitter_followers_' . $userId);
-        Cache::forget('twitter_following_' . $userId);
-        Cache::forget('twitter_blocked_' . $userId);
-        Cache::forget('twitter_muted_' . $userId);
-        
-        $this->successMessage = 'All Twitter API cache cleared! You can now try fresh API calls.';
-        $this->basicUserInfo = null;
-        $this->followers = [];
-        $this->following = [];
-        $this->blockedUsers = [];
-        $this->mutedUsers = [];
-    }
-
-    public function showApiUpgradeGuide()
-    {
-        $this->successMessage = 'To access followers/following data, your Twitter Developer App needs elevated access:<br><br>' .
-            '1. Visit <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" class="text-blue-600 underline">Twitter Developer Portal</a><br>' .
-            '2. Go to your Project & Apps section<br>' .
-            '3. Find your app and check its current access level<br>' .
-            '4. Apply for Basic, Pro, or Enterprise access for your app<br>' .
-            '5. Once approved, your existing API credentials will work with elevated access<br><br>' .
-            '<strong>Important:</strong> This is an app-level upgrade, not a user-level upgrade.<br>' .
-            'Your current API keys will work once the app is approved for higher access.<br><br>' .
-            'Current limitations with Free tier:<br>' .
-            '• ❌ Followers list<br>' .
-            '• ❌ Following list<br>' .
-            '• ❌ Blocked users<br>' .
-            '• ❌ Muted users<br>' .
-            '• ✅ Basic user info<br>' .
-            '• ✅ Recent mentions<br>' .
-            '• ✅ Tweet creation';
-    }
-
-    public function updateTwitterProfile()
-    {
-        $this->loading = true;
-        $this->errorMessage = '';
-        $this->successMessage = '';
-
-        try {
-            $settings = $this->getTwitterSettings();
-            $twitterService = new TwitterService($settings);
-            
-            // Get fresh user info from Twitter API
-            $me = $twitterService->findMe();
-            if ($me && isset($me->data)) {
-                $user = Auth::user();
-                
-                // Update profile information
-                $user->twitter_username = $me->data->username ?? $user->twitter_username;
-                $user->twitter_name = $me->data->name ?? $user->twitter_name;
-                $user->twitter_profile_image_url = $me->data->profile_image_url ?? $user->twitter_profile_image_url;
-                $user->save();
-                
-                $this->successMessage = 'Twitter profile updated successfully! Username: @' . ($me->data->username ?? 'N/A') . ', Name: ' . ($me->data->name ?? 'N/A');
-                
-                // Clear cache to force refresh
-                $this->clearAllCache();
-            } else {
-                $this->errorMessage = 'Unable to fetch Twitter profile information';
-            }
-            
-        } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to update Twitter profile: ' . $e->getMessage();
-        } finally {
-            $this->loading = false;
-        }
-    }
-
-    public function checkApiAccessLevel()
-    {
-        $this->loading = true;
-        $this->errorMessage = '';
-        $this->successMessage = '';
-
-        try {
-            $settings = $this->getTwitterSettings();
-            $twitterService = new TwitterService($settings);
-            
-            $accessInfo = [];
-            $accessInfo[] = '<strong>Current API Access Level Check:</strong><br><br>';
-            
-            // Test basic endpoints that should work with any access level
-            try {
-                $me = $twitterService->findMe();
-                if ($me && isset($me->data)) {
-                    $accessInfo[] = '✅ Basic user info: Working (User ID: ' . $me->data->id . ', Username: @' . $me->data->username . ')';
-                } else {
-                    $accessInfo[] = '❌ Basic user info: Failed - No data returned';
-                }
-            } catch (\Exception $e) {
-                $accessInfo[] = '❌ Basic user info: ' . $e->getMessage();
-            }
-            
-            // Test mentions endpoint
-            try {
-                $mentions = $twitterService->getRecentMentions(Auth::user()->twitter_account_id);
-                $accessInfo[] = '✅ Recent mentions: Working';
-            } catch (\Exception $e) {
-                $accessInfo[] = '❌ Recent mentions: ' . $e->getMessage();
-            }
-            
-            // Test followers endpoint with detailed error logging
-            try {
-                $followers = $twitterService->getFollowers();
-                $accessInfo[] = '✅ Followers list: Working (Elevated access confirmed)';
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-                $statusCode = $e->getResponse()->getStatusCode();
-                $body = $e->getResponse()->getBody()->getContents();
-                
-                // Log the full error for debugging
-                Log::info('Twitter API Followers Error', [
-                    'status_code' => $statusCode,
-                    'error_body' => $body,
-                    'user_id' => Auth::user()->id,
-                    'twitter_account_id' => Auth::user()->twitter_account_id
-                ]);
-                
-                if ($statusCode === 403) {
-                    $accessInfo[] = '❌ Followers list: 403 Forbidden - App access level insufficient';
-                    $accessInfo[] = '&nbsp;&nbsp;&nbsp;Error details: ' . $body;
-                } else {
-                    $accessInfo[] = '❌ Followers list: HTTP ' . $statusCode . ' - ' . $e->getMessage();
-                }
-            } catch (\Exception $e) {
-                $accessInfo[] = '❌ Followers list: ' . $e->getMessage();
-            }
-            
-            // Test following endpoint with detailed error logging
-            try {
-                $following = $twitterService->getFollowing();
-                $accessInfo[] = '✅ Following list: Working (Elevated access confirmed)';
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-                $statusCode = $e->getResponse()->getStatusCode();
-                $body = $e->getResponse()->getBody()->getContents();
-                
-                // Log the full error for debugging
-                Log::info('Twitter API Following Error', [
-                    'status_code' => $statusCode,
-                    'error_body' => $body,
-                    'user_id' => Auth::user()->id,
-                    'twitter_account_id' => Auth::user()->twitter_account_id
-                ]);
-                
-                if ($statusCode === 403) {
-                    $accessInfo[] = '❌ Following list: 403 Forbidden - App access level insufficient';
-                    $accessInfo[] = '&nbsp;&nbsp;&nbsp;Error details: ' . $body;
-                } else {
-                    $accessInfo[] = '❌ Following list: HTTP ' . $statusCode . ' - ' . $e->getMessage();
-                }
-            } catch (\Exception $e) {
-                $accessInfo[] = '❌ Following list: ' . $e->getMessage();
-            }
-            
-            // Test tweet creation (should work with any access level)
-            try {
-                // We won't actually create a tweet, just test if the endpoint is accessible
-                $accessInfo[] = '✅ Tweet creation: Endpoint accessible';
-            } catch (\Exception $e) {
-                $accessInfo[] = '❌ Tweet creation: ' . $e->getMessage();
-            }
-            
-            $accessInfo[] = '<br><strong>Conclusion:</strong>';
-            $accessInfo[] = 'If followers/following show 403 errors, your Twitter Developer App needs elevated access.';
-            $accessInfo[] = 'This is an app-level setting, not a user-level setting.';
-            
-            $this->successMessage = implode('<br>', $accessInfo);
-            
-        } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to check API access level: ' . $e->getMessage();
-        } finally {
-            $this->loading = false;
-        }
-    }
-
-    private function getTwitterSettings()
-    {
-        return [
-            'account_id' => Auth::user()->twitter_account_id,
-            'access_token' => Auth::user()->twitter_access_token,
-            'access_token_secret' => Auth::user()->twitter_access_token_secret,
-            'consumer_key' => config('services.twitter.api_key'),
-            'consumer_secret' => config('services.twitter.api_key_secret'),
-            'bearer_token' => config('services.twitter.bearer_token'),
+        $cacheKeys = [
+            'twitter_user_info_' . $userId,
+            'twitter_followers_' . $userId,
+            'twitter_following_' . $userId,
+            'twitter_blocked_' . $userId,
+            'twitter_muted_' . $userId,
         ];
+
+        foreach ($cacheKeys as $key) {
+            Cache::forget($key);
+        }
     }
 
     public function getCurrentData()
@@ -752,21 +265,21 @@ class UserManagementComponent extends Component
             return $data;
         }
 
-        return array_filter($data, function($user) {
+        return array_filter($data, function ($user) {
             $searchLower = strtolower($this->searchQuery);
-            $name = strtolower($user->name ?? '');
-            $username = strtolower($user->username ?? '');
-            
-            return strpos($name, $searchLower) !== false || 
-                   strpos($username, $searchLower) !== false;
+            return (
+                strpos(strtolower($user->name ?? ''), $searchLower) !== false ||
+                strpos(strtolower($user->username ?? ''), $searchLower) !== false ||
+                strpos(strtolower($user->description ?? ''), $searchLower) !== false
+            );
         });
     }
 
     public function getPaginatedData()
     {
         $filteredData = $this->getFilteredData();
-        $start = ($this->page - 1) * $this->perPage;
-        return array_slice($filteredData, $start, $this->perPage);
+        $offset = ($this->page - 1) * $this->perPage;
+        return array_slice($filteredData, $offset, $this->perPage);
     }
 
     public function getTotalPages()
@@ -775,8 +288,26 @@ class UserManagementComponent extends Component
         return ceil(count($filteredData) / $this->perPage);
     }
 
+    private function getTwitterSettings()
+    {
+        $user = Auth::user();
+        
+        if (!$user->twitter_account_connected || !$user->twitter_account_id || !$user->twitter_access_token || !$user->twitter_access_token_secret) {
+            throw new \Exception('Twitter account not properly connected. Please reconnect your account.');
+        }
+
+        return [
+            'account_id' => $user->twitter_account_id,
+            'access_token' => $user->twitter_access_token,
+            'access_token_secret' => $user->twitter_access_token_secret,
+            'consumer_key' => config('services.twitter.api_key'),
+            'consumer_secret' => config('services.twitter.api_key_secret'),
+            'bearer_token' => config('services.twitter.bearer_token'),
+        ];
+    }
+
     public function render()
     {
-        return view('livewire.user-management-component'); 
+        return view('livewire.user-management-component');
     }
 }
