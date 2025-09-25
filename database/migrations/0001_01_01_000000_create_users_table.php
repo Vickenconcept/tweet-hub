@@ -29,6 +29,7 @@ return new class extends Migration
             $table->string('default_topic')->nullable();
             $table->string('default_niche')->nullable();
             $table->timestamp('last_daily_ideas_generated')->nullable();
+            $table->json('monitored_keywords')->nullable();
             $table->timestamps();
         });
 

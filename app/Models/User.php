@@ -32,6 +32,7 @@ class User extends Authenticatable
         'default_topic',
         'default_niche',
         'last_daily_ideas_generated',
+        'monitored_keywords',
     ];
 
     /**

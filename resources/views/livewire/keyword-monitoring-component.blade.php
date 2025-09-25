@@ -1,24 +1,77 @@
 <div class="">
     <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold text-gray-900">Twitter Mentions</h2>
+        <h2 class="text-2xl font-bold text-gray-900">Keyword Monitoring</h2>
         <div class="flex items-center gap-3">
             @if($lastRefresh)
                 <span class="text-sm text-gray-500">Last updated: {{ $lastRefresh }}</span>
             @endif
-            <button wire:click="loadMentions" 
+            <button wire:click="loadTweets" 
                     wire:loading.attr="disabled"
                     class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
                 <i class="bx bx-refresh mr-1"></i>
-                <span wire:loading.remove wire:target="loadMentions">Refresh</span>
-                <span wire:loading wire:target="loadMentions">Loading...</span>
+                <span wire:loading.remove wire:target="loadTweets">Refresh</span>
+                <span wire:loading wire:target="loadTweets">Loading...</span>
             </button>
-            <button wire:click="refreshMentions" 
-                    class="px-4 py-2 text-sm font-medium text-green-600 bg-gradient-to-r from-green-100 to-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer">
-                <i class="bx bx-sync mr-1"></i>
-                Sync
-            </button>
-
         </div>
+    </div>
+
+    <!-- Keyword Management Section -->
+    <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200">
+        <div class="flex items-center mb-4">
+            <div class="w-10 h-10 bg-gradient-to-r from-purple-100 to-purple-200 rounded-xl flex items-center justify-center mr-3">
+                <i class="bx bx-search text-xl text-purple-600"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900">Manage Keywords</h3>
+        </div>
+        
+        <!-- Add New Keyword -->
+        <div class="mb-6">
+            <div class="flex gap-3">
+                <div class="flex-1">
+                    <input wire:model="newKeyword" 
+                           type="text" 
+                           placeholder="Enter keyword to monitor (e.g., #hashtag, @username, or keyword)"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-lg">
+                    @error('newKeyword') 
+                        <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+                <button wire:click="addKeyword" 
+                        wire:loading.attr="disabled"
+                        class="px-6 py-3 bg-gradient-to-r from-purple-400 to-purple-600 text-white font-medium rounded-xl hover:bg-purple-700 disabled:opacity-50 transition-colors cursor-pointer shadow-lg">
+                    <span wire:loading.remove wire:target="addKeyword">Add Keyword</span>
+                    <span wire:loading wire:target="addKeyword">Adding...</span>
+                </button>
+            </div>
+            <p class="text-sm text-gray-500 mt-2">Add keywords, hashtags (#hashtag), or usernames (@username) to monitor for mentions across Twitter.</p>
+            <div class="text-xs text-gray-400 mt-1">
+                <strong>Examples:</strong> laravel, #laravel, @laravel, "web development"
+            </div>
+        </div>
+
+        <!-- Current Keywords -->
+        @if(count($keywords) > 0)
+            <div class="mb-4">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Currently Monitoring:</h4>
+                <div class="flex flex-wrap gap-2">
+                    @foreach($keywords as $index => $keyword)
+                        <div class="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-100 to-purple-200 rounded-xl">
+                            <span class="text-purple-700 font-medium">{{ $keyword }}</span>
+                            <button wire:click="removeKeyword({{ $index }})" 
+                                    class="text-purple-600 hover:text-purple-800 transition-colors cursor-pointer">
+                                <i class="bx bx-x text-sm"></i>
+                            </button>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @else
+            <div class="text-center py-8 text-gray-500">
+                <i class="bx bx-search text-4xl mb-3"></i>
+                <p class="text-gray-600">No keywords being monitored yet</p>
+                <p class="text-sm text-gray-500">Add keywords above to start monitoring tweets</p>
+            </div>
+        @endif
     </div>
 
     <!-- Success/Error Messages -->
@@ -26,16 +79,15 @@
         <div class="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-xl shadow-sm" 
              x-data="{ show: true }" 
              x-show="show" 
-             x-init="setTimeout(() => { show = false; $wire.clearSuccessMessage(); }, 4000)">
+             x-init="setTimeout(() => { show = false; $wire.clearMessage(); }, 4000)">
             <div class="flex items-start justify-between">
                 <div class="flex items-start">
                     <i class="bx bx-check-circle text-xl mr-2 mt-0.5 text-green-600"></i>
                     <div>
                         <p class="font-medium text-lg">{{ $successMessage }}</p>
-                        <p class="text-sm text-green-600 mt-1">Action completed successfully!</p>
                     </div>
                 </div>
-                <button @click="show = false; $wire.clearSuccessMessage();" class="text-green-600 hover:text-green-800 p-1">
+                <button @click="show = false; $wire.clearMessage();" class="text-green-600 hover:text-green-800 p-1">
                     <i class="bx bx-x text-lg"></i>
                 </button>
             </div>
@@ -46,7 +98,7 @@
         <div class="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl shadow-sm" 
              x-data="{ show: true }" 
              x-show="show" 
-             x-init="setTimeout(() => { show = false; $wire.clearErrorMessage(); }, 8000)">
+             x-init="setTimeout(() => { show = false; $wire.clearMessage(); }, 8000)">
             <div class="flex items-start justify-between">
                 <div class="flex items-start">
                     <i class="bx bx-error-circle text-xl mr-2 mt-0.5"></i>
@@ -57,29 +109,27 @@
                         @endif
                     </div>
                 </div>
-                <button @click="show = false; $wire.clearErrorMessage();" class="text-red-600 hover:text-red-800 p-1">
+                <button @click="show = false; $wire.clearMessage();" class="text-red-600 hover:text-red-800 p-1">
                     <i class="bx bx-x text-lg"></i>
                 </button>
             </div>
         </div>
     @endif
 
-
-
-    <!-- Loading State -->
-    @if($loading)
+    <!-- Search Loading State -->
+    @if($searchLoading)
         <div class="text-center py-12 text-gray-500">
             <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
                 <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Loading Mentions...</h3>
-                <p class="text-gray-600 mb-4" x-text="loadingMessage || 'Fetching your latest Twitter mentions'"></p>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Searching Tweets...</h3>
+                <p class="text-gray-600 mb-4" x-text="loadingMessage || 'Looking for tweets containing your monitored keywords'"></p>
                 <p class="text-xs text-gray-500">This may take a few moments...</p>
             </div>
         </div>
-    @elseif(count($mentions) > 0)
-        <!-- Mentions List -->
+    @elseif(count($tweets) > 0)
+        <!-- Tweets List -->
         <div class="space-y-4">
-            @foreach($this->getPaginatedMentions() as $mention)
+            @foreach($paginatedTweets as $tweet)
                 <div class="p-6 rounded-2xl bg-white hover:shadow-blue-100 transition-all duration-500 ease-in-out shadow-2xl shadow-gray-200">
                     <div class="flex items-start gap-3">
                         <div class="flex-shrink-0">
@@ -91,39 +141,48 @@
                         </div>
                         <div class="flex-1">
                             <div class="flex items-center gap-3 mb-4">
-                                <span class="font-semibold text-gray-500 text-md">{{ $mention->author_id ?? 'Unknown User' }}</span>
+                                @php
+                                    $tweetId = is_object($tweet) ? $tweet->id : $tweet['id'];
+                                    $authorId = is_object($tweet) ? $tweet->author_id : $tweet['author_id'];
+                                    $text = is_object($tweet) ? $tweet->text : $tweet['text'];
+                                    $date = is_object($tweet) ? ($tweet->created_at ?? $tweet->timestamp ?? $tweet->date ?? null) : ($tweet['created_at'] ?? $tweet['timestamp'] ?? $tweet['date'] ?? null);
+                                @endphp
+                                <span class="font-semibold text-gray-500 text-md">{{ $authorId ?? 'Unknown User' }}</span>
                                 <span class="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">
-                                    {{ isset($mention->created_at) ? \Carbon\Carbon::parse($mention->created_at)->diffForHumans() : '' }}
+                                    {{ $date ? \Carbon\Carbon::parse($date)->diffForHumans() : 'Unknown time' }}
+                                </span>
+                                <span class="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-lg">
+                                    Keyword Match
                                 </span>
                             </div>
-                            <p class="text-gray-800 mb-4 text-md leading-relaxed">{{ $mention->text ?? 'No content' }}</p>
+                            <p class="text-gray-800 mb-4 text-md leading-relaxed">{{ $text ?? 'No content' }}</p>
                             
                             <!-- Action Buttons -->
                             <div class="flex items-center gap-3">
-                                <button wire:click="replyToMention('{{ $mention->id }}')" 
+                                <button wire:click="replyToTweet('{{ $tweetId }}')" 
                                         class="px-4 py-2 text-sm text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 hover:bg-blue-200 rounded-xl transition-colors cursor-pointer">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 inline mr-1">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
                                     </svg>
                                     Reply
                                 </button>
-                                <button wire:click="likeMention('{{ $mention->id }}')" 
+                                <button wire:click="likeTweet('{{ $tweetId }}')" 
                                         class="like-button px-4 py-2 text-sm text-red-600 bg-gradient-to-r from-red-100 to-red-200 hover:bg-red-200 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden group"
                                         x-data="{ 
                                             liked: false, 
                                             animating: false,
-                                            likeMention() {
+                                            likeTweet() {
                                                 if (this.animating) return;
                                                 this.animating = true;
                                                 this.liked = true;
-                                                $wire.likeMention('{{ $mention->id }}');
+                                                $wire.likeTweet('{{ $tweetId }}');
                                                 setTimeout(() => {
                                                     this.liked = false;
                                                     this.animating = false;
                                                 }, 2000);
                                             }
                                         }"
-                                        @click="likeMention()"
+                                        @click="likeTweet()"
                                         :class="{ 'animate-pulse': animating, 'scale-105': liked }">
                                     <!-- Heart Icon with Animation -->
                                     <div class="relative inline-flex items-center">
@@ -152,34 +211,34 @@
                                         <div x-show="liked" class="absolute inset-0 bg-red-200 opacity-30 animate-ping"></div>
                                     </div>
                                 </button>
-                                <button wire:click="retweetMention('{{ $mention->id }}')" 
+                                <button wire:click="retweetTweet('{{ $tweetId }}')" 
                                         class="px-4 py-2 text-sm text-green-600 bg-gradient-to-r from-green-100 to-green-200 hover:bg-green-200 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden"
                                         x-data="{ 
                                             retweeted: false, 
                                             animating: false,
-                                            retweetMention() {
+                                            retweetTweet() {
                                                 if (this.animating) return;
                                                 this.animating = true;
                                                 this.retweeted = true;
-                                                $wire.retweetMention('{{ $mention->id }}');
+                                                $wire.retweetTweet('{{ $tweetId }}');
                                                 setTimeout(() => {
                                                     this.retweeted = false;
                                                     this.animating = false;
                                                 }, 2000);
                                             }
                                         }"
-                                        @click="retweetMention()"
+                                        @click="retweetTweet()"
                                         :class="{ 'animate-pulse': animating, 'scale-105': retweeted }">
                                     <!-- Retweet Icon with Animation -->
                                     <div class="relative inline-flex items-center">
                                         <!-- Default Retweet Icon -->
                                         <svg x-show="!retweeted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1 transition-all duration-300">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0 3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3" />
                                         </svg>
                                         
                                         <!-- Animated Retweet Icon -->
                                         <svg x-show="retweeted" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1 transition-all duration-300 animate-spin text-green-600">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0 3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3" />
                                         </svg>
                                         
                                         <!-- Success Sparkles -->
@@ -197,7 +256,7 @@
                                         <div x-show="retweeted" class="absolute inset-0 bg-green-200 opacity-30 animate-ping"></div>
                                     </div>
                                 </button>
-                                <a href="https://twitter.com/i/status/{{ $mention->id }}" 
+                                <a href="https://twitter.com/i/status/{{ $tweetId }}" 
                                    target="_blank" 
                                    rel="noopener noreferrer"
                                    class="px-4 py-2 text-sm text-purple-600 bg-gradient-to-r from-purple-100 to-purple-200 hover:bg-purple-200 rounded-xl transition-colors inline-flex items-center cursor-pointer">
@@ -214,7 +273,7 @@
         </div>
 
         <!-- Pagination Controls -->
-        @if($this->getTotalPages() > 1)
+        @if($totalPages > 1)
             <div class="mt-8 flex items-center justify-center">
                 <div class="bg-white rounded-2xl shadow-2xl shadow-gray-200 p-4">
                     <div class="flex items-center space-x-3">
@@ -231,11 +290,11 @@
 
                         <!-- Page Numbers -->
                         <div class="flex items-center space-x-2">
-                            @for($page = 1; $page <= $this->getTotalPages(); $page++)
-                                @if($page == 1 || $page == $this->getTotalPages() || ($page >= $currentPage - 1 && $page <= $currentPage + 1))
+                            @for($page = 1; $page <= $totalPages; $page++)
+                                @if($page == 1 || $page == $totalPages || ($page >= $currentPage - 1 && $page <= $currentPage + 1))
                                     <button wire:click="goToPage({{ $page }})" 
                                             @if($page == $currentPage) disabled @endif
-                                            class="px-4 py-2 text-sm font-medium rounded-xl transition-colors {{ $page == $currentPage ? 'bg-gradient-to-r from-blue-400 to-blue-600 text-white shadow-2xl shadow-gray-200' : 'text-gray-700 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200' }}">
+                                            class="px-4 py-2 text-sm font-medium rounded-xl transition-colors {{ $page == $currentPage ? 'bg-gradient-to-r from-purple-400 to-purple-600 text-white shadow-2xl shadow-gray-200' : 'text-gray-700 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200' }}">
                                         {{ $page }}
                                     </button>
                                 @elseif($page == $currentPage - 2 || $page == $currentPage + 2)
@@ -247,7 +306,7 @@
                         <!-- Next Page Button -->
                         <button wire:click="nextPage" 
                                 wire:loading.attr="disabled"
-                                @if($currentPage >= $this->getTotalPages()) disabled @endif
+                                @if($currentPage >= $totalPages) disabled @endif
                                 class="px-4 py-2 text-sm font-medium text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer">
                             Next
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 inline ml-1">
@@ -258,27 +317,37 @@
 
                     <!-- Page Info -->
                     <div class="mt-3 text-center text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-2">
-                        Page {{ $currentPage }} of {{ $this->getTotalPages() }}
+                        Page {{ $currentPage }} of {{ $totalPages }}
                         <span class="text-gray-400 mx-2">•</span>
-                        Showing {{ count($this->getPaginatedMentions()) }} of {{ count($mentions) }} mentions
+                        Showing {{ count($paginatedTweets) }} of {{ count($tweets) }} tweets
                     </div>
                 </div>
             </div>
         @endif
-    @else
-        <!-- Empty State -->
+    @elseif(count($keywords) > 0)
+        <!-- Empty State - Keywords set but no tweets found -->
         <div class="text-center py-12 text-gray-500">
             <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
-                <i class="bx bx-at text-6xl mb-6 text-blue-500"></i>
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">No Mentions Found</h3>
-                <p class="text-gray-600 mb-4">You don't have any mentions yet</p>
-                <p class="text-xs text-gray-500">Mentions will appear here when someone mentions your account</p>
+                <i class="bx bx-search text-6xl mb-6 text-purple-500"></i>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">No Tweets Found</h3>
+                <p class="text-gray-600 mb-4">No tweets found containing your monitored keywords</p>
+                <p class="text-xs text-gray-500">Try adding more keywords or check back later for new tweets</p>
+            </div>
+        </div>
+    @else
+        <!-- Empty State - No keywords set -->
+        <div class="text-center py-12 text-gray-500">
+            <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
+                <i class="bx bx-search text-6xl mb-6 text-purple-500"></i>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Start Monitoring Keywords</h3>
+                <p class="text-gray-600 mb-4">Add keywords above to start monitoring tweets</p>
+                <p class="text-xs text-gray-500">Monitor hashtags, usernames, or any keywords you're interested in</p>
             </div>
         </div>
     @endif
 
     <!-- Reply Modal -->
-    @if($showReplyModal && $selectedMention)
+    @if($showReplyModal && $selectedTweet)
         <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div class="bg-white rounded-2xl p-8 w-full max-w-lg mx-4 shadow-2xl shadow-gray-200">
                 <div class="flex items-center mb-6">
@@ -287,12 +356,15 @@
                             <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
                         </svg>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-900">Reply to Mention</h3>
+                    <h3 class="text-xl font-semibold text-gray-900">Reply to Tweet</h3>
                 </div>
                 
                 <div class="mb-6 p-4 bg-gray-50 rounded-xl">
                     <p class="text-sm text-gray-600 mb-2 font-medium">Replying to:</p>
-                    <p class="text-gray-800 text-lg leading-relaxed">{{ $selectedMention->text ?? 'No content' }}</p>
+                    @php
+                        $selectedText = is_object($selectedTweet) ? $selectedTweet->text : $selectedTweet['text'];
+                    @endphp
+                    <p class="text-gray-800 text-lg leading-relaxed">{{ $selectedText ?? 'No content' }}</p>
                 </div>
 
                 <div class="mb-8">
@@ -303,14 +375,17 @@
                     <div class="text-right mt-2">
                         <span class="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-lg">{{ strlen($replyContent) }}/280</span>
                     </div>
+                    @error('replyContent') 
+                        <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
+                    @enderror
                 </div>
 
                 <div class="flex gap-4">
                     <button wire:click="sendReply" 
                             wire:loading.attr="disabled"
                             class="flex-1 px-6 py-3 bg-gradient-to-r from-blue-400 to-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors cursor-pointer shadow-2xl shadow-gray-200">
-                        <span wire:loading.remove>Send Reply</span>
-                        <span wire:loading>Sending...</span>
+                        <span wire:loading.remove wire:target="sendReply">Send Reply</span>
+                        <span wire:loading wire:target="sendReply">Sending...</span>
                     </button>
                     <button wire:click="cancelReply" 
                             class="flex-1 px-6 py-3 bg-gradient-to-r from-gray-400 to-gray-600 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors cursor-pointer">
@@ -324,10 +399,10 @@
 
 <script>
 document.addEventListener('livewire:init', () => {
-    let loadingMessage = 'Preparing to load mentions...';
+    let loadingMessage = 'Preparing to search tweets...';
     
     // Handle delayed loading
-    Livewire.on('delayed-load-mentions', () => {
+    Livewire.on('delayed-load-tweets', () => {
         // Show initial message
         document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
         
@@ -335,14 +410,14 @@ document.addEventListener('livewire:init', () => {
         let countdown = 2;
         const timer = setInterval(() => {
             if (countdown > 0) {
-                loadingMessage = `Loading mentions in ${countdown} seconds...`;
+                loadingMessage = `Searching tweets in ${countdown} seconds...`;
                 document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
                 countdown--;
             } else {
                 clearInterval(timer);
-                loadingMessage = 'Fetching your latest Twitter mentions';
+                loadingMessage = 'Looking for tweets containing your monitored keywords';
                 document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
-                @this.call('loadMentions');
+                @this.call('loadTweets');
             }
         }, 1000);
     });
@@ -350,8 +425,8 @@ document.addEventListener('livewire:init', () => {
     // Handle start delayed loading
     Livewire.on('start-delayed-loading', () => {
         setTimeout(() => {
-            @this.call('loadMentions');
+            @this.call('loadTweets');
         }, 100); // Small delay to show loading state
     });
 });
-</script> 
+</script>

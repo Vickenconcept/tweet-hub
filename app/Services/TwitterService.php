@@ -18,6 +18,35 @@ class TwitterService
 
     // Tweets endpoints
     /**
+     * Find recent mentions for a user using fast search method.
+     */
+    public function getRecentMentionsFast($accountId)
+    {
+        try {
+            Log::info('Fetching mentions using fast search method', ['account_id' => $accountId]);
+            
+            // Get user info first to get username
+            $userInfo = $this->findUser($accountId, \Noweh\TwitterApi\UserLookup::MODES['ID']);
+            
+            if (isset($userInfo->data->username)) {
+                $username = $userInfo->data->username;
+                Log::info('Found username for mentions search', ['username' => $username]);
+                
+                // Use search endpoint with @username query for faster results
+                return $this->searchTweetsDirect("@{$username}", 50);
+            } else {
+                throw new \Exception('Could not find username for user ID: ' . $accountId);
+            }
+        } catch (\Exception $e) {
+            Log::error('Fast search method failed', [
+                'account_id' => $accountId,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Find recent mentions for a user.
      */
     public function getRecentMentions($accountId)
@@ -155,6 +184,148 @@ class TwitterService
             $lookup->addFilterOnLocales($locales);
         }
         return $lookup->performRequest();
+    }
+
+    /**
+     * Search tweets by keyword using appropriate Twitter API endpoint.
+     */
+    public function searchTweetsByKeyword($keyword, $pageSize = 10)
+    {
+        // Clean and format the keyword for Twitter API
+        $formattedKeyword = $this->formatKeywordForTwitter($keyword);
+        
+        if (empty($formattedKeyword)) {
+            throw new \Exception('Invalid keyword format');
+        }
+
+        // For mentions (@username), we need to use a different approach
+        if (str_starts_with($formattedKeyword, '@')) {
+            return $this->searchMentionsByUsername($formattedKeyword, $pageSize);
+        }
+
+        // For hashtags and regular keywords, use search endpoint
+        return $this->searchTweetsDirect($formattedKeyword, $pageSize);
+    }
+
+    /**
+     * Search for mentions of a specific username.
+     */
+    private function searchMentionsByUsername($username, $pageSize = 10)
+    {
+        try {
+            // Remove @ symbol for user lookup
+            $cleanUsername = ltrim($username, '@');
+            
+            // First, get the user ID for the username
+            $user = $this->findUser($cleanUsername, \Noweh\TwitterApi\UserLookup::MODES['USERNAME']);
+            
+            if (!isset($user->data->id)) {
+                throw new \Exception("User {$cleanUsername} not found");
+            }
+            
+            $userId = $user->data->id;
+            
+            // Get recent mentions for this user
+            return $this->getRecentMentions($userId);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to search mentions by username', [
+                'username' => $username,
+                'error' => $e->getMessage()
+            ]);
+            
+            // Fallback to regular search if user lookup fails
+            return $this->searchTweetsDirect($username, $pageSize);
+        }
+    }
+
+    /**
+     * Search tweets directly using Twitter API v2 search/recent endpoint.
+     */
+    private function searchTweetsDirect($query, $pageSize = 10)
+    {
+        try {
+            // Twitter API v2 search requires Bearer Token authentication
+            $bearerToken = config('services.twitter.bearer_token');
+            
+            if (empty($bearerToken)) {
+                throw new \Exception('Twitter Bearer Token not configured');
+            }
+
+            // Build the search URL
+            $baseUrl = 'https://api.twitter.com/2/tweets/search/recent';
+            $params = [
+                'query' => $query,
+                'max_results' => min($pageSize, 100), // Twitter API limit
+                'tweet.fields' => 'created_at,public_metrics,author_id',
+                'expansions' => 'author_id',
+                'user.fields' => 'name,username,profile_image_url'
+            ];
+
+            $url = $baseUrl . '?' . http_build_query($params);
+            
+            Log::info('Twitter Search API Request', [
+                'url' => $url,
+                'query' => $query,
+                'page_size' => $pageSize
+            ]);
+
+            // Make Bearer Token request
+            $guzzleClient = new GuzzleClient();
+            $response = $guzzleClient->request('GET', $url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $bearerToken,
+                    'Content-Type' => 'application/json',
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            Log::info('Twitter Search API Response', [
+                'query' => $query,
+                'response' => $data
+            ]);
+
+            if (isset($data['errors'])) {
+                throw new \Exception('Twitter API Error: ' . json_encode($data['errors']));
+            }
+
+            // Convert to object format to match existing code
+            return (object) $data;
+
+        } catch (\Exception $e) {
+            Log::error('Direct Twitter search failed', [
+                'query' => $query,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Format keyword for Twitter API search.
+     */
+    private function formatKeywordForTwitter($keyword)
+    {
+        $keyword = trim($keyword);
+        
+        // Handle hashtags - Twitter API expects them as-is
+        if (str_starts_with($keyword, '#')) {
+            return $keyword; // Keep hashtag as-is
+        }
+        
+        // Handle mentions - Twitter API expects them as-is
+        if (str_starts_with($keyword, '@')) {
+            return $keyword; // Keep mention as-is
+        }
+        
+        // Handle regular keywords - wrap in quotes if it contains spaces
+        if (strpos($keyword, ' ') !== false) {
+            return '"' . $keyword . '"';
+        }
+        
+        // Return as-is for simple keywords
+        return $keyword;
     }
 
     /**
@@ -830,7 +1001,26 @@ class TwitterService
      */
     public function retweet($tweetId)
     {
-        return $this->client->retweet()->performRequest(['tweet_id' => $tweetId]);
+        try {
+            return $this->client->retweet()->performRequest(['tweet_id' => $tweetId]);
+        } catch (\Exception $e) {
+            // Check if it's the "already retweeted" error
+            if (strpos($e->getMessage(), 'already retweeted') !== false || 
+                strpos($e->getMessage(), 'You cannot retweet a Tweet that you have already retweeted') !== false) {
+                // Return a success response for already retweeted tweets
+                return (object) ['data' => ['retweeted' => true, 'message' => 'Tweet was already retweeted']];
+            }
+            
+            // Check if it's the "Too Many Requests" error (429)
+            if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
+                strpos($e->getMessage(), 'Too Many Requests') !== false) {
+                // Return a user-friendly response for rate limiting
+                return (object) ['data' => ['retweeted' => false, 'message' => 'Rate limit exceeded. Please wait a moment before retweeting again.']];
+            }
+            
+            // Re-throw other errors
+            throw $e;
+        }
     }
 
     /**
@@ -838,8 +1028,20 @@ class TwitterService
      */
     public function likeTweet($tweetId)
     {
-        // Try the correct like endpoint structure - might need different parameters
-        return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetId]);
+        try {
+            // Try the correct like endpoint structure - might need different parameters
+            return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetId]);
+        } catch (\Exception $e) {
+            // Check if it's the "Too Many Requests" error (429)
+            if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
+                strpos($e->getMessage(), 'Too Many Requests') !== false) {
+                // Return a user-friendly response for rate limiting
+                return (object) ['data' => ['liked' => false, 'message' => 'Rate limit exceeded. Please wait a moment before liking again.']];
+            }
+            
+            // Re-throw other errors
+            throw $e;
+        }
     }
 
     // Tweet/Replies endpoints

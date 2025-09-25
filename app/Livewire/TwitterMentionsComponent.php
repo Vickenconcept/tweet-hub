@@ -23,10 +23,15 @@ class TwitterMentionsComponent extends Component
 
     public function mount()
     {
-        $this->loadMentions();
+        // Show loading animation immediately
+        $this->loading = true;
+        $this->successMessage = 'Preparing to load mentions...';
+        
+        // Schedule delayed loading after 2 seconds
+        $this->dispatch('delayed-load-mentions');
     }
 
-    public function loadMentions()
+    public function loadMentions($forceRefresh = false)
     {
         $this->loading = true;
         $this->errorMessage = '';
@@ -45,17 +50,24 @@ class TwitterMentionsComponent extends Component
             return;
         }
 
-        // Check cache first
+        // Define cache key for use throughout the method
         $cacheKey = "twitter_mentions_{$user->id}";
+
+        // Check cache first (only if not forcing refresh)
+        if (!$forceRefresh) {
         $cachedMentions = \Illuminate\Support\Facades\Cache::get($cacheKey);
         
         if ($cachedMentions) {
+                \Log::info('Loading mentions from cache', ['cache_key' => $cacheKey, 'mentions_count' => count($cachedMentions['data'] ?? [])]);
             $this->mentions = $cachedMentions['data'] ?? [];
             $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
             $this->currentPage = 1; // Reset to first page when loading from cache
-            $this->successMessage = 'Mentions loaded. Click refresh to get latest mentions.';
+                $this->successMessage = 'Mentions loaded from cache. Click refresh to get latest mentions.';
             $this->loading = false;
             return;
+            }
+        } else {
+            \Log::info('Force refresh requested - bypassing cache');
         }
 
         try {
@@ -69,7 +81,25 @@ class TwitterMentionsComponent extends Component
             ];
 
             $twitterService = new TwitterService($settings);
-            $mentionsResponse = $twitterService->getRecentMentions($user->twitter_account_id);
+            
+            // Try fast search method first for better performance and real-time data
+            try {
+                Log::info('Attempting fast mentions search');
+                $mentionsResponse = $twitterService->getRecentMentionsFast($user->twitter_account_id);
+                Log::info('Fast mentions search successful - using real-time search API');
+            } catch (\Exception $e) {
+                Log::warning('Fast mentions search failed, falling back to timeline method', ['error' => $e->getMessage()]);
+                try {
+                    $mentionsResponse = $twitterService->getRecentMentions($user->twitter_account_id);
+                    Log::info('Timeline method successful - using mentions timeline API');
+                } catch (\Exception $e2) {
+                    Log::error('Both fast and timeline methods failed', [
+                        'fast_error' => $e->getMessage(),
+                        'timeline_error' => $e2->getMessage()
+                    ]);
+                    throw $e2;
+                }
+            }
 
             // Log the response for debugging
             Log::info('Twitter API Response', [
@@ -101,8 +131,10 @@ class TwitterMentionsComponent extends Component
             $this->currentPage = 1; // Reset to first page when new mentions are loaded
 
             $mentionsCount = count($this->mentions);
+            \Log::info('Fresh mentions loaded from Twitter API', ['mentions_count' => $mentionsCount, 'force_refresh' => $forceRefresh]);
+            
             if ($mentionsCount > 0) {
-                $this->successMessage = "Mentions loaded successfully! Found {$mentionsCount} mentions.";
+                $this->successMessage = "Mentions loaded successfully! Found {$mentionsCount} fresh mentions.";
             } else {
                 $this->successMessage = "No mentions found. This could mean no one has mentioned you recently, or your account hasn't been mentioned yet.";
             }
@@ -199,8 +231,14 @@ class TwitterMentionsComponent extends Component
             $response = $twitterService->likeTweet($mentionId);
             
             if ($response) {
+                // Check if it's a rate limit message
+                if (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
+                    $this->errorMessage = $response->data->message;
+                    $this->dispatch('show-error', $response->data->message);
+                } else {
                 $this->successMessage = 'Tweet liked successfully!';
                 $this->dispatch('show-success', 'Tweet liked successfully!');
+                }
                 // Clear cache to show updated data
                 $this->clearMentionsCache();
             }
@@ -225,8 +263,19 @@ class TwitterMentionsComponent extends Component
             $response = $twitterService->retweet($mentionId);
             
             if ($response) {
+                // Check if it was already retweeted
+                if (isset($response->data->message) && strpos($response->data->message, 'already retweeted') !== false) {
+                    $this->successMessage = 'Tweet was already retweeted!';
+                    $this->dispatch('show-success', 'Tweet was already retweeted!');
+                } 
+                // Check if it's a rate limit message
+                elseif (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
+                    $this->errorMessage = $response->data->message;
+                    $this->dispatch('show-error', $response->data->message);
+                } else {
                 $this->successMessage = 'Tweet retweeted successfully!';
                 $this->dispatch('show-success', 'Tweet retweeted successfully!');
+                }
                 // Clear cache to show updated data
                 $this->clearMentionsCache();
             }
@@ -250,7 +299,14 @@ class TwitterMentionsComponent extends Component
 
     public function refreshMentions()
     {
-        $this->loadMentions();
+        // Clear only this user's cache to ensure fresh data
+        $this->clearMentionsCache();
+        
+        // Add some debugging info
+        \Log::info('Refreshing mentions - user cache cleared, forcing fresh data fetch with fast method');
+        
+        // Then load fresh mentions with force refresh
+        $this->loadMentions(true);
     }
 
     public function clearSuccessMessage()
@@ -266,16 +322,151 @@ class TwitterMentionsComponent extends Component
     public function refreshMentionsDelayed()
     {
         // This method will be called by JavaScript after a delay
-        $this->loadMentions();
+        // Clear only this user's cache to ensure fresh data
+        $this->clearMentionsCache();
+        // Then load fresh mentions with force refresh
+        $this->loadMentions(true);
     }
 
     public function clearMentionsCache()
     {
         $user = Auth::user();
         if ($user) {
-            $cacheKey = "twitter_mentions_{$user->id}";
-            \Illuminate\Support\Facades\Cache::forget($cacheKey);
+            $userId = $user->id;
+            $cacheKey = "twitter_mentions_{$userId}";
+            
+            // Check if cache exists before clearing
+            $cachedData = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            \Log::info('Before cache clear - cache exists', [
+                'user_id' => $userId, 
+                'cache_key' => $cacheKey, 
+                'has_data' => !empty($cachedData)
+            ]);
+            
+            // Clear only this user's specific cache keys
+            $userSpecificKeys = [
+                "twitter_mentions_{$userId}",
+                "mentions_{$userId}",
+                "twitter_mentions_user_{$userId}",
+                "mentions_cache_{$userId}"
+            ];
+            
+            $clearedCount = 0;
+            foreach ($userSpecificKeys as $key) {
+                $cleared = \Illuminate\Support\Facades\Cache::forget($key);
+                if ($cleared) $clearedCount++;
+            }
+            
+            \Log::info('Cache clear result', [
+                'user_id' => $userId,
+                'keys_attempted' => count($userSpecificKeys),
+                'keys_cleared' => $clearedCount
+            ]);
+            
+            // Also clear from database cache table directly (only for this user)
+            try {
+                $deletedRows = \DB::table('cache')
+                    ->where(function($query) use ($userId) {
+                        $query->where('key', 'like', "%twitter_mentions_{$userId}%")
+                              ->orWhere('key', 'like', "%mentions_{$userId}%")
+                              ->orWhere('key', 'like', "%twitter_mentions_user_{$userId}%")
+                              ->orWhere('key', 'like', "%mentions_cache_{$userId}%");
+                    })
+                    ->delete();
+                    
+                \Log::info('Cleared cache from database table', [
+                    'user_id' => $userId,
+                    'deleted_rows' => $deletedRows
+                ]);
+            } catch (\Exception $e) {
+                \Log::warning('Could not clear cache from database table', [
+                    'user_id' => $userId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
+            // Verify cache is actually cleared for this user only
+            $cachedDataAfter = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            \Log::info('After cache clear - cache exists', [
+                'user_id' => $userId,
+                'cache_key' => $cacheKey, 
+                'has_data' => !empty($cachedDataAfter)
+            ]);
         }
+    }
+    
+    /**
+     * Clear all user-specific cache (use with caution - only for this user)
+     */
+    public function clearAllUserCache()
+    {
+        $user = Auth::user();
+        if ($user) {
+            $userId = $user->id;
+            
+            // All possible cache keys for this user across all components
+            $allUserCacheKeys = [
+                // Mentions cache
+                "twitter_mentions_{$userId}",
+                "mentions_{$userId}",
+                "twitter_mentions_user_{$userId}",
+                "mentions_cache_{$userId}",
+                
+                // User management cache
+                "twitter_user_info_{$userId}",
+                "twitter_followers_{$userId}",
+                "twitter_following_{$userId}",
+                "twitter_blocked_{$userId}",
+                "twitter_muted_{$userId}",
+                
+                // Post ideas cache
+                "generated_ideas_{$userId}",
+                "daily_ideas_{$userId}_" . now()->format('Y-m-d'),
+                
+                // Any other user-specific cache patterns
+                "user_{$userId}_",
+                "cache_{$userId}_"
+            ];
+            
+            $clearedCount = 0;
+            foreach ($allUserCacheKeys as $key) {
+                $cleared = \Illuminate\Support\Facades\Cache::forget($key);
+                if ($cleared) $clearedCount++;
+            }
+            
+            \Log::info('Cleared all user cache', [
+                'user_id' => $userId,
+                'keys_attempted' => count($allUserCacheKeys),
+                'keys_cleared' => $clearedCount
+            ]);
+            
+            // Clear from database cache table
+            try {
+                $deletedRows = \DB::table('cache')
+                    ->where('key', 'like', "%{$userId}%")
+                    ->delete();
+                    
+                \Log::info('Cleared all user cache from database', [
+                    'user_id' => $userId,
+                    'deleted_rows' => $deletedRows
+                ]);
+            } catch (\Exception $e) {
+                \Log::warning('Could not clear all user cache from database', [
+                    'user_id' => $userId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+    }
+
+    public function delayedLoadMentions()
+    {
+        // Add a 2-second delay before loading mentions
+        $this->loading = true;
+        $this->successMessage = 'Loading mentions...';
+        
+        // Use JavaScript setTimeout to delay the actual loading
+        $this->dispatch('start-delayed-loading');
     }
 
     public function nextPage()
