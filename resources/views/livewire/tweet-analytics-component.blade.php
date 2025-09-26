@@ -176,12 +176,39 @@
         @if($selectedTweet)
             <div class="bg-white rounded-xl shadow-2xl shadow-gray-200 p-6">
                  @php
-                     $selectedTweetText = is_object($selectedTweet) ? $selectedTweet->text : $selectedTweet['text'];
-                     $selectedTweetMetrics = is_object($selectedTweet) ? ($selectedTweet->public_metrics ?? null) : ($selectedTweet['public_metrics'] ?? null);
-                     $selectedLikeCount = $selectedTweetMetrics ? (is_object($selectedTweetMetrics) ? $selectedTweetMetrics->like_count : $selectedTweetMetrics['like_count']) : 0;
-                     $selectedRetweetCount = $selectedTweetMetrics ? (is_object($selectedTweetMetrics) ? $selectedTweetMetrics->retweet_count : $selectedTweetMetrics['retweet_count']) : 0;
-                     $selectedReplyCount = $selectedTweetMetrics ? (is_object($selectedTweetMetrics) ? $selectedTweetMetrics->reply_count : $selectedTweetMetrics['reply_count']) : 0;
-                     $selectedQuoteCount = $selectedTweetMetrics ? (is_object($selectedTweetMetrics) ? $selectedTweetMetrics->quote_count : $selectedTweetMetrics['quote_count']) : 0;
+                     // Safely extract tweet data with comprehensive null checks
+                     $selectedTweetText = 'No content available';
+                     $selectedLikeCount = 0;
+                     $selectedRetweetCount = 0;
+                     $selectedReplyCount = 0;
+                     $selectedQuoteCount = 0;
+                     
+                     if (is_object($selectedTweet)) {
+                         $selectedTweetText = $selectedTweet->text ?? 'No content available';
+                         $selectedTweetMetrics = $selectedTweet->public_metrics ?? null;
+                         if ($selectedTweetMetrics) {
+                             $selectedLikeCount = $selectedTweetMetrics->like_count ?? 0;
+                             $selectedRetweetCount = $selectedTweetMetrics->retweet_count ?? 0;
+                             $selectedReplyCount = $selectedTweetMetrics->reply_count ?? 0;
+                             $selectedQuoteCount = $selectedTweetMetrics->quote_count ?? 0;
+                         }
+                     } elseif (is_array($selectedTweet)) {
+                         $selectedTweetText = $selectedTweet['text'] ?? 'No content available';
+                         $selectedTweetMetrics = $selectedTweet['public_metrics'] ?? null;
+                         if ($selectedTweetMetrics) {
+                             if (is_object($selectedTweetMetrics)) {
+                                 $selectedLikeCount = $selectedTweetMetrics->like_count ?? 0;
+                                 $selectedRetweetCount = $selectedTweetMetrics->retweet_count ?? 0;
+                                 $selectedReplyCount = $selectedTweetMetrics->reply_count ?? 0;
+                                 $selectedQuoteCount = $selectedTweetMetrics->quote_count ?? 0;
+                             } else {
+                                 $selectedLikeCount = $selectedTweetMetrics['like_count'] ?? 0;
+                                 $selectedRetweetCount = $selectedTweetMetrics['retweet_count'] ?? 0;
+                                 $selectedReplyCount = $selectedTweetMetrics['reply_count'] ?? 0;
+                                 $selectedQuoteCount = $selectedTweetMetrics['quote_count'] ?? 0;
+                             }
+                         }
+                     }
                  @endphp
                  <div class="flex items-center justify-between mb-6">
                      <div>

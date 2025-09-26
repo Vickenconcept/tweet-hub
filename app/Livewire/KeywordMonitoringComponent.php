@@ -58,12 +58,18 @@ class KeywordMonitoringComponent extends Component
     {
         $this->loadKeywords();
         
-        // Show loading animation immediately
-        $this->searchLoading = true;
-        $this->successMessage = 'Preparing to search tweets...';
-        
-        // Schedule delayed loading after 2 seconds
-        $this->dispatch('delayed-load-tweets');
+        // Only show loading if we have keywords to search for
+        if (!empty($this->keywords)) {
+            $this->searchLoading = true;
+            $this->successMessage = 'Preparing to search tweets...';
+            
+            // Schedule delayed loading after 2 seconds
+            $this->dispatch('delayed-load-tweets');
+        } else {
+            $this->searchLoading = false;
+            $this->tweets = [];
+            $this->lastRefresh = now()->format('M j, Y g:i A');
+        }
     }
 
     public function loadKeywords()
@@ -133,6 +139,7 @@ class KeywordMonitoringComponent extends Component
         if (!$this->advancedSearch && empty($this->keywords)) {
             $this->tweets = [];
             $this->lastRefresh = now()->format('M j, Y g:i A');
+            $this->searchLoading = false;
             return;
         }
         

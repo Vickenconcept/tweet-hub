@@ -191,6 +191,8 @@ class TweetAnalyticsComponent extends Component
                     'has_id' => is_object($this->selectedTweet) ? isset($this->selectedTweet->id) : (is_array($this->selectedTweet) ? isset($this->selectedTweet['id']) : false),
                     'has_text' => is_object($this->selectedTweet) ? isset($this->selectedTweet->text) : (is_array($this->selectedTweet) ? isset($this->selectedTweet['text']) : false)
                 ]);
+            } else {
+                throw new \Exception('Failed to fetch tweet details. Tweet may not exist or be accessible.');
             }
             
             // Load analytics data based on active tab

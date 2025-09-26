@@ -16,7 +16,7 @@
                         <i class='bx bx-video text-2xl text-white'></i>
                     </div>
                     <div>
-                        <span class="font-bold text-xl text-gray-900">VidEngager</span>
+                        <span class="font-bold text-xl text-gray-900">tweet-hunt</span>
                         <p class="text-xs text-gray-500 -mt-1">Video Marketing Platform</p>
                     </div>
                 </a>

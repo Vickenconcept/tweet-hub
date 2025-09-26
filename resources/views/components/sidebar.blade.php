@@ -11,7 +11,7 @@
                 <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg group-hover:shadow-blue-500/25 transition-all duration-300">
                     <i class='bx bx-video text-2xl text-white'></i>
                 </div>
-                <span class="font-bold text-xl tracking-wide bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">VidEngager</span>
+                <span class="font-bold text-xl tracking-wide bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">tweet-hunt</span>
             </a>
             <button data-drawer-target="logo-sidebar" data-drawer-toggle="logo-sidebar" aria-controls="logo-sidebar"
                 type="button"

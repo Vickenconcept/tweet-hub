@@ -357,7 +357,7 @@
                             </div>
                             <div class="flex items-center justify-between text-sm">
                                 <div class="flex items-center gap-4 text-gray-600">
-                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl">
+                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl text-xs">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                             stroke-width="1.5" stroke="currentColor" class="size-4 mr-2">
                                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -365,7 +365,7 @@
                                         </svg>
                                         {{ $post->scheduled_at->format('M j, Y') }}
                                     </div>
-                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl">
+                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl text-xs">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                             stroke-width="1.5" stroke="currentColor" class="size-4 mr-2">
                                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -375,7 +375,7 @@
                                     </div>
                                 </div>
                                 <div
-                                    class="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-blue-100 to-blue-200 text-blue-600">
+                                    class="px-3 py-1 rounded-xl font-medium bg-gradient-to-r from-blue-100 to-blue-200 text-blue-600 text-xs">
                                     Scheduled
                                 </div>
                             </div>
@@ -425,7 +425,7 @@
                             </div>
                             <div class="flex items-center justify-between text-sm">
                                 <div class="flex items-center gap-4 text-gray-600">
-                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl">
+                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl text-xs">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                             stroke-width="1.5" stroke="currentColor" class="size-4 mr-2">
                                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -435,7 +435,7 @@
                                     </div>
                                 </div>
                                 <div
-                                    class="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-yellow-100 to-yellow-200 text-yellow-600">
+                                    class="px-3 py-1 rounded-xl font-medium bg-gradient-to-r from-yellow-100 to-yellow-200 text-yellow-600 text-xs">
                                     Draft
                                 </div>
                             </div>
@@ -504,7 +504,7 @@
                             </div>
                             <div class="flex items-center justify-between text-sm">
                                 <div class="flex items-center gap-4 text-gray-600">
-                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl">
+                                    <div class="flex items-center bg-gray-100 px-3 py-1 rounded-xl text-xs">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                             stroke-width="1.5" stroke="currentColor" class="size-4 mr-2">
                                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -514,7 +514,7 @@
                                     </div>
                                 </div>
                                 <div
-                                    class="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-r from-green-100 to-green-200 text-green-600">
+                                    class="px-3 py-1 rounded-xl font-medium bg-gradient-to-r from-green-100 to-green-200 text-green-600 text-xs">
                                     Sent
                                 </div>
                             </div>

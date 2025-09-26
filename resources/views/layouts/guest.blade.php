@@ -8,14 +8,14 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @seo([
-        'title' => 'videngager',
-        'description' => 'videngager',
+        'title' => 'tweet-hunt',
+        'description' => 'tweet-hunt',
         'image' => asset('images/login-image.png'),
         'site_name' => config('app.name'),
         'favicon' => asset('favicon.ico'),
     ])
 
-    <title>videngager</title>
+    <title>tweet-hunt</title>
 
     <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 
