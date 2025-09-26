@@ -329,7 +329,9 @@ function generatePostIdeas() {
              console.log('editFavoriteInChat called with:', content);
              // Dispatch event to ChatComponent
              window.Livewire.dispatch('edit-idea-in-chat', { idea: content });
-             console.log('Event dispatched to ChatComponent');
+             // Also dispatch event to open chat
+             window.Livewire.dispatch('open-chat');
+             console.log('Event dispatched to ChatComponent and open-chat triggered');
          },
          
          editFavoriteInChatFromButton(button) {

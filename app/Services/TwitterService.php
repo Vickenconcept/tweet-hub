@@ -1084,7 +1084,39 @@ class TwitterService
         }
         
         $userId = $me->data->id;
-        return $this->client->userBlocks()->lookup($userId)->performRequest();
+        return $this->getBlockedUsersDirect($userId);
+    }
+
+    private function getBlockedUsersDirect($userId)
+    {
+        $bearerToken = $this->settings['bearer_token'] ?? config('services.twitter.bearer_token');
+        
+        if (!$bearerToken) {
+            throw new \Exception('Bearer token is required for this endpoint');
+        }
+
+        $url = "https://api.twitter.com/2/users/{$userId}/blocking";
+        $params = [
+            'max_results' => 100,
+            'user.fields' => 'description,public_metrics,profile_image_url,verified'
+        ];
+
+        $client = new \GuzzleHttp\Client();
+        
+        try {
+            $response = $client->get($url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $bearerToken,
+                    'Accept' => 'application/json',
+                ],
+                'query' => $params
+            ]);
+
+            return json_decode($response->getBody()->getContents());
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $errorBody = $e->getResponse()->getBody()->getContents();
+            throw new \Exception('Twitter API error: ' . $errorBody);
+        }
     }
 
     // User/Follows endpoints
@@ -1100,7 +1132,47 @@ class TwitterService
         }
         
         $userId = $me->data->id;
-        return $this->client->userFollows()->getFollowers($userId)->performRequest();
+        return $this->getFollowersDirect($userId);
+    }
+
+    private function getFollowersDirect($userId)
+    {
+        $bearerToken = $this->settings['bearer_token'] ?? config('services.twitter.bearer_token');
+        
+        if (!$bearerToken) {
+            throw new \Exception('Bearer token is required for this endpoint');
+        }
+
+        // Try API v2 first
+        try {
+            $url = "https://api.twitter.com/2/users/{$userId}/followers";
+            $params = [
+                'max_results' => 100,
+                'user.fields' => 'description,public_metrics,profile_image_url,verified'
+            ];
+
+            $client = new \GuzzleHttp\Client();
+            
+            $response = $client->get($url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $bearerToken,
+                    'Accept' => 'application/json',
+                ],
+                'query' => $params
+            ]);
+
+            return json_decode($response->getBody()->getContents());
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $errorBody = $e->getResponse()->getBody()->getContents();
+            $errorData = json_decode($errorBody, true);
+            
+            // Check if it's a client-not-enrolled error
+            if (isset($errorData['reason']) && $errorData['reason'] === 'client-not-enrolled') {
+                throw new \Exception('Twitter API Setup Required: ' . $errorData['detail'] . ' Visit: ' . ($errorData['registration_url'] ?? 'https://developer.twitter.com'));
+            }
+            
+            throw new \Exception('Twitter API error: ' . $errorBody);
+        }
     }
 
     /**
@@ -1115,7 +1187,39 @@ class TwitterService
         }
         
         $userId = $me->data->id;
-        return $this->client->userFollows()->getFollowing($userId)->performRequest();
+        return $this->getFollowingDirect($userId);
+    }
+
+    private function getFollowingDirect($userId)
+    {
+        $bearerToken = $this->settings['bearer_token'] ?? config('services.twitter.bearer_token');
+        
+        if (!$bearerToken) {
+            throw new \Exception('Bearer token is required for this endpoint');
+        }
+
+        $url = "https://api.twitter.com/2/users/{$userId}/following";
+        $params = [
+            'max_results' => 100,
+            'user.fields' => 'description,public_metrics,profile_image_url,verified'
+        ];
+
+        $client = new \GuzzleHttp\Client();
+        
+        try {
+            $response = $client->get($url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $bearerToken,
+                    'Accept' => 'application/json',
+                ],
+                'query' => $params
+            ]);
+
+            return json_decode($response->getBody()->getContents());
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $errorBody = $e->getResponse()->getBody()->getContents();
+            throw new \Exception('Twitter API error: ' . $errorBody);
+        }
     }
 
     /**
@@ -1178,7 +1282,39 @@ class TwitterService
         }
         
         $userId = $me->data->id;
-        return $this->client->userMutes()->lookup($userId)->performRequest();
+        return $this->getMutedUsersDirect($userId);
+    }
+
+    private function getMutedUsersDirect($userId)
+    {
+        $bearerToken = $this->settings['bearer_token'] ?? config('services.twitter.bearer_token');
+        
+        if (!$bearerToken) {
+            throw new \Exception('Bearer token is required for this endpoint');
+        }
+
+        $url = "https://api.twitter.com/2/users/{$userId}/muting";
+        $params = [
+            'max_results' => 100,
+            'user.fields' => 'description,public_metrics,profile_image_url,verified'
+        ];
+
+        $client = new \GuzzleHttp\Client();
+        
+        try {
+            $response = $client->get($url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $bearerToken,
+                    'Accept' => 'application/json',
+                ],
+                'query' => $params
+            ]);
+
+            return json_decode($response->getBody()->getContents());
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $errorBody = $e->getResponse()->getBody()->getContents();
+            throw new \Exception('Twitter API error: ' . $errorBody);
+        }
     }
 
     /**

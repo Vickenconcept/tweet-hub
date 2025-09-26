@@ -3,13 +3,22 @@
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-900">User Management</h2>
-        <button wire:click="refreshData" 
-                wire:loading.attr="disabled"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-            <i class="bx bx-refresh mr-2"></i>
-            <span wire:loading.remove>Refresh Data</span>
-            <span wire:loading>Refreshing...</span>
-        </button>
+        <div class="flex space-x-2">
+            <button wire:click="checkApiAccess" 
+                    wire:loading.attr="disabled"
+                    class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                <i class="bx bx-shield-check mr-2"></i>
+                <span wire:loading.remove>Check API</span>
+                <span wire:loading>Checking...</span>
+            </button>
+            <button wire:click="refreshData" 
+                    wire:loading.attr="disabled"
+                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                <i class="bx bx-refresh mr-2"></i>
+                <span wire:loading.remove>Refresh Data</span>
+                <span wire:loading>Refreshing...</span>
+            </button>
+        </div>
     </div>
 
     <!-- Info Box -->
@@ -18,7 +27,8 @@
             <i class="bx bx-info-circle text-blue-500 mr-2 mt-0.5"></i>
             <div class="text-sm text-blue-700">
                 <p class="font-medium mb-1">Your Twitter Account Data</p>
-                <p>View your followers, following, blocked, and muted users. Click refresh to update the data.</p>
+                <p>View your followers, following, blocked, and muted users. Click "Check API" to test access, then "Refresh Data" to load your data.</p>
+                <p class="mt-2 text-xs text-blue-600"><strong>Note:</strong> Some features require Elevated Access to Twitter API v2. If data shows as 0, you may need to apply for elevated access in your Twitter Developer Portal.</p>
             </div>
         </div>
     </div>

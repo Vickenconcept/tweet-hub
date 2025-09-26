@@ -43,25 +43,15 @@ class UserManagementComponent extends Component
         try {
             $settings = $this->getTwitterSettings();
             $twitterService = new TwitterService($settings);
-
+            
             // Load basic user info
             $this->loadBasicUserInfo($twitterService);
 
-            // Load data based on active tab
-            switch ($this->activeTab) {
-                case 'followers':
-                    $this->loadFollowers($twitterService);
-                    break;
-                case 'following':
-                    $this->loadFollowing($twitterService);
-                    break;
-                case 'blocked':
-                    $this->loadBlockedUsers($twitterService);
-                    break;
-                case 'muted':
-                    $this->loadMutedUsers($twitterService);
-                    break;
-            }
+            // Load all user data
+            $this->loadFollowers($twitterService);
+            $this->loadFollowing($twitterService);
+            $this->loadBlockedUsers($twitterService);
+            $this->loadMutedUsers($twitterService);
 
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to load data: ' . $e->getMessage();
@@ -76,12 +66,12 @@ class UserManagementComponent extends Component
         try {
             $cacheKey = 'twitter_user_info_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-
+            
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->basicUserInfo = $cachedData['data'];
                 return;
             }
-
+            
             $me = $twitterService->findMe();
             if ($me && isset($me->data)) {
                 $this->basicUserInfo = $me->data;
@@ -102,25 +92,37 @@ class UserManagementComponent extends Component
         try {
             $cacheKey = 'twitter_followers_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-
+            
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->followers = $cachedData['data'];
                 return;
             }
-
-            $followers = $twitterService->getFollowers(Auth::user()->twitter_account_id);
+            
+            $followers = $twitterService->getFollowers();
+            Log::info('Followers API Response', ['response' => $followers]);
+            
             if ($followers && isset($followers->data)) {
                 $this->followers = $followers->data;
+                Log::info('Followers loaded successfully', ['count' => count($this->followers)]);
 
                 // Cache the data for 15 minutes
                 Cache::put($cacheKey, [
                     'data' => $followers->data,
                     'expires_at' => now()->addMinutes(15)
                 ], 900);
+            } else {
+                Log::warning('No followers data in response', ['response' => $followers]);
             }
         } catch (\Exception $e) {
             Log::warning('Failed to load followers', ['error' => $e->getMessage()]);
             $this->followers = [];
+            
+            // Check if it's a setup issue
+            if (strpos($e->getMessage(), 'client-not-enrolled') !== false || strpos($e->getMessage(), 'Twitter API Setup Required') !== false) {
+                $this->errorMessage = 'Twitter API Setup Required: Your app needs to be attached to a Project with Elevated access. Please visit the Twitter Developer Portal to set this up.';
+            } else {
+                $this->errorMessage = 'Failed to load followers: ' . $e->getMessage();
+            }
         }
     }
 
@@ -129,18 +131,18 @@ class UserManagementComponent extends Component
         try {
             $cacheKey = 'twitter_following_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-
+            
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->following = $cachedData['data'];
                 return;
             }
-
-            $following = $twitterService->getFollowing(Auth::user()->twitter_account_id);
+            
+            $following = $twitterService->getFollowing();
             if ($following && isset($following->data)) {
                 $this->following = $following->data;
 
                 // Cache the data for 15 minutes
-                Cache::put($cacheKey, [
+            Cache::put($cacheKey, [
                     'data' => $following->data,
                     'expires_at' => now()->addMinutes(15)
                 ], 900);
@@ -156,18 +158,18 @@ class UserManagementComponent extends Component
         try {
             $cacheKey = 'twitter_blocked_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-
+            
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->blockedUsers = $cachedData['data'];
                 return;
             }
-
-            $blocked = $twitterService->getBlockedUsers(Auth::user()->twitter_account_id);
+            
+            $blocked = $twitterService->getBlockedUsers();
             if ($blocked && isset($blocked->data)) {
                 $this->blockedUsers = $blocked->data;
 
                 // Cache the data for 15 minutes
-                Cache::put($cacheKey, [
+            Cache::put($cacheKey, [
                     'data' => $blocked->data,
                     'expires_at' => now()->addMinutes(15)
                 ], 900);
@@ -183,18 +185,18 @@ class UserManagementComponent extends Component
         try {
             $cacheKey = 'twitter_muted_' . Auth::user()->id;
             $cachedData = Cache::get($cacheKey);
-
+            
             if ($cachedData && $cachedData['expires_at'] > now()) {
                 $this->mutedUsers = $cachedData['data'];
                 return;
             }
-
-            $muted = $twitterService->getMutedUsers(Auth::user()->twitter_account_id);
+            
+            $muted = $twitterService->getMutedUsers();
             if ($muted && isset($muted->data)) {
                 $this->mutedUsers = $muted->data;
 
                 // Cache the data for 15 minutes
-                Cache::put($cacheKey, [
+            Cache::put($cacheKey, [
                     'data' => $muted->data,
                     'expires_at' => now()->addMinutes(15)
                 ], 900);
@@ -223,6 +225,31 @@ class UserManagementComponent extends Component
         $this->clearCache();
         $this->loadData();
         $this->successMessage = 'Data refreshed successfully!';
+    }
+
+    public function checkApiAccess()
+    {
+        try {
+            $settings = $this->getTwitterSettings();
+            $twitterService = new TwitterService($settings);
+            
+            // Test basic access
+            $me = $twitterService->findMe();
+            if ($me && isset($me->data)) {
+                $this->successMessage = 'Basic API access confirmed. User: @' . $me->data->username;
+            }
+            
+            // Test followers access
+            try {
+                $followers = $twitterService->getFollowers();
+                $this->successMessage .= ' | Followers API: OK';
+            } catch (\Exception $e) {
+                $this->errorMessage .= ' | Followers API failed: ' . $e->getMessage();
+            }
+            
+        } catch (\Exception $e) {
+            $this->errorMessage = 'API access check failed: ' . $e->getMessage();
+        }
     }
 
     private function clearCache()
@@ -308,6 +335,6 @@ class UserManagementComponent extends Component
 
     public function render()
     {
-        return view('livewire.user-management-component');
+        return view('livewire.user-management-component'); 
     }
 }

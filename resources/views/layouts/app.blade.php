@@ -164,6 +164,31 @@
                     stopOnFocus: true,
                 }).showToast();
             });
+
+            // Listen for open-chat event to automatically open chat
+            Livewire.on('open-chat', () => {
+                const chatArea = document.getElementById('chat-area');
+                const openChatBtn = document.getElementById('open-chat');
+                
+                if (chatArea && openChatBtn) {
+                    // Check if chat is already open
+                    const currentWidth = chatArea.style.width;
+                    if (currentWidth === '0px' || currentWidth === '0' || !currentWidth) {
+                        // Chat is closed, open it
+                        chatArea.style.display = 'block';
+                        setTimeout(() => {
+                            chatArea.style.width = '35%';
+                            chatArea.style.opacity = '1';
+                        }, 10);
+                        openChatBtn.innerHTML = `<i class='bx bx-sidebar mr-2 text-xl'></i> close chat`;
+                        
+                        // Update the global chatOpen state if it exists
+                        if (window.chatOpen !== undefined) {
+                            window.chatOpen = true;
+                        }
+                    }
+                }
+            });
         });
     </script>
 

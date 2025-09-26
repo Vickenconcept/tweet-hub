@@ -185,12 +185,10 @@ class GeneratePostIdeasComponent extends Component
 
     public function editInChat($index)
     {
-        // Calculate the actual index in the full ideas array
-        $actualIndex = ($this->currentPage - 1) * $this->perPage + $index;
-        
-        if (isset($this->generatedIdeas[$actualIndex])) {
-            $idea = $this->generatedIdeas[$actualIndex];
+        if (isset($this->generatedIdeas[$index])) {
+            $idea = $this->generatedIdeas[$index];
             $this->dispatch('edit-idea-in-chat', idea: $idea);
+            $this->dispatch('open-chat'); // Dispatch event to open chat
             $this->successMessage = 'Idea sent to chat for editing!';
         }
     }
