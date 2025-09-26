@@ -78,6 +78,24 @@
                         <span class="font-medium">Keyword Monitor</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ route('tweet-analytics') }}"
+                        class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group {{ request()->routeIs('tweet-analytics') ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25 font-semibold' : 'text-gray-300 hover:bg-gray-800/50 hover:text-white hover:shadow-md' }}">
+                        <div class="p-2 rounded-lg {{ request()->routeIs('tweet-analytics') ? 'bg-white/20' : 'bg-gray-700/50 group-hover:bg-gray-600/50' }} transition-all duration-300">
+                            <i class="bx bx-bar-chart text-lg {{ request()->routeIs('tweet-analytics') ? 'text-white' : 'text-gray-400 group-hover:text-white' }}"></i>
+                        </div>
+                        <span class="font-medium">Tweet Analytics</span>
+                    </a>
+                </li>
+                {{-- <li>
+                    <a href="{{ route('bookmarks-management') }}"
+                        class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group {{ request()->routeIs('bookmarks-management') ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25 font-semibold' : 'text-gray-300 hover:bg-gray-800/50 hover:text-white hover:shadow-md' }}">
+                        <div class="p-2 rounded-lg {{ request()->routeIs('bookmarks-management') ? 'bg-white/20' : 'bg-gray-700/50 group-hover:bg-gray-600/50' }} transition-all duration-300">
+                            <i class="bx bx-bookmark text-lg {{ request()->routeIs('bookmarks-management') ? 'text-white' : 'text-gray-400 group-hover:text-white' }}"></i>
+                        </div>
+                        <span class="font-medium">Bookmarks</span>
+                    </a>
+                </li> --}}
                 {{-- <li>
                     <a href="{{ route('user-management') }}"
                         class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('user-management') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">

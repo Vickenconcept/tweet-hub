@@ -23,6 +23,26 @@ class KeywordMonitoringComponent extends Component
     public $currentPage = 1;
     public $perPage = 10;
     public $searchLoading = false;
+    
+    // Advanced Search Properties
+    public $advancedSearch = false;
+    public $searchQuery = '';
+    public $language = '';
+    public $fromUser = '';
+    public $excludeRetweets = false;
+    public $excludeReplies = false;
+    public $hasMedia = false;
+    public $hasLinks = false;
+    public $minLikes = '';
+    public $minRetweets = '';
+    public $minReplies = '';
+    public $sinceDate = '';
+    public $untilDate = '';
+    public $nearLocation = '';
+    public $withinRadius = '';
+    public $isQuestion = false;
+    public $sentiment = ''; // positive, negative, neutral
+    public $isVerified = false;
 
     protected $rules = [
         'newKeyword' => 'required|string|min:2|max:50',
@@ -109,9 +129,17 @@ class KeywordMonitoringComponent extends Component
 
     public function loadTweets()
     {
-        if (empty($this->keywords)) {
+        // For advanced search, we don't need keywords
+        if (!$this->advancedSearch && empty($this->keywords)) {
             $this->tweets = [];
             $this->lastRefresh = now()->format('M j, Y g:i A');
+            return;
+        }
+        
+        // For advanced search, we need a search query
+        if ($this->advancedSearch && empty($this->searchQuery)) {
+            $this->errorMessage = 'Please enter a search query for advanced search.';
+            $this->searchLoading = false;
             return;
         }
 
@@ -144,11 +172,15 @@ class KeywordMonitoringComponent extends Component
 
             $twitterService = new TwitterService($settings);
             
-            // Search tweets for each keyword separately and combine results
-            $allTweets = [];
-            $seenTweetIds = []; // To avoid duplicates
-            
-            foreach ($this->keywords as $keyword) {
+            if ($this->advancedSearch && !empty($this->searchQuery)) {
+                // Use advanced search
+                $this->tweets = $this->performAdvancedSearch($twitterService);
+            } else {
+                // Use simple keyword search (existing logic)
+                $allTweets = [];
+                $seenTweetIds = []; // To avoid duplicates
+                
+                foreach ($this->keywords as $keyword) {
                 Log::info('Searching for keyword', ['keyword' => $keyword]);
                 
                 $searchResponse = $twitterService->searchTweetsByKeyword(
@@ -224,31 +256,297 @@ class KeywordMonitoringComponent extends Component
                 return strtotime($dateB) - strtotime($dateA);
             });
 
-            $this->tweets = $allTweets;
+                $this->tweets = $allTweets;
+            }
 
             $this->lastRefresh = now()->format('M j, Y g:i A');
             $this->currentPage = 1;
 
             $tweetCount = count($this->tweets);
             if ($tweetCount > 0) {
-                $this->successMessage = "Found {$tweetCount} tweets containing your monitored keywords!";
+                $this->successMessage = "Found {$tweetCount} tweets matching your " . ($this->advancedSearch ? 'advanced search' : 'monitored keywords') . "!";
             } else {
-                $this->successMessage = "No tweets found containing your monitored keywords. Try adding more keywords or check back later.";
+                $this->successMessage = "No tweets found. Try adjusting your " . ($this->advancedSearch ? 'search criteria' : 'keywords') . " or check back later.";
             }
 
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $statusCode = $e->getResponse()->getStatusCode();
+            $responseBody = $e->getResponse()->getBody()->getContents();
+            
+            Log::error('Twitter API Client Error', [
+                'status_code' => $statusCode,
+                'response_body' => $responseBody,
+                'query' => $this->advancedSearch ? $this->buildAdvancedQuery() : 'keyword search'
+            ]);
             
             if ($statusCode === 429) {
                 $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again.';
+            } elseif ($statusCode === 400) {
+                // Parse the error response to get more specific information
+                $errorData = json_decode($responseBody, true);
+                if (isset($errorData['errors'][0]['message'])) {
+                    $this->errorMessage = 'Invalid search query: ' . $errorData['errors'][0]['message'] . '. Please check your search terms and filters.';
+                } else {
+                    $this->errorMessage = 'Invalid search query. Please check your search terms and filters.';
+                }
             } else {
                 $this->errorMessage = "Failed to search tweets: HTTP {$statusCode}";
             }
         } catch (\Exception $e) {
+            Log::error('Search error', [
+                'error' => $e->getMessage(),
+                'query' => $this->advancedSearch ? $this->buildAdvancedQuery() : 'keyword search'
+            ]);
             $this->errorMessage = 'Failed to search tweets: ' . $e->getMessage();
         }
 
         $this->searchLoading = false;
+    }
+
+    private function performAdvancedSearch($twitterService)
+    {
+        $query = $this->buildAdvancedQuery();
+        
+        Log::info('Advanced search query', [
+            'query' => $query,
+            'search_query' => $this->searchQuery,
+            'filters' => [
+                'language' => $this->language,
+                'from_user' => $this->fromUser,
+                'exclude_retweets' => $this->excludeRetweets,
+                'exclude_replies' => $this->excludeReplies,
+                'has_media' => $this->hasMedia,
+                'has_links' => $this->hasLinks,
+                'min_likes' => $this->minLikes,
+                'min_retweets' => $this->minRetweets,
+                'min_replies' => $this->minReplies,
+                'since_date' => $this->sinceDate,
+                'until_date' => $this->untilDate,
+                'near_location' => $this->nearLocation,
+                'within_radius' => $this->withinRadius,
+                'is_question' => $this->isQuestion,
+                'sentiment' => $this->sentiment,
+                'is_verified' => $this->isVerified,
+            ]
+        ]);
+        
+        // Use direct search instead of searchTweetsByKeyword to avoid username processing
+        $searchResponse = $twitterService->searchTweetsDirect($query, $this->perPage);
+        
+        Log::info('Advanced search response', [
+            'has_data' => isset($searchResponse->data),
+            'data_count' => isset($searchResponse->data) ? count($searchResponse->data) : 0,
+            'response_type' => gettype($searchResponse)
+        ]);
+        
+        if (isset($searchResponse->data) && is_array($searchResponse->data)) {
+            return $searchResponse->data;
+        }
+        
+        return [];
+    }
+
+    public function buildAdvancedQuery()
+    {
+        $queryParts = [];
+        
+        // Base search query
+        if (!empty($this->searchQuery)) {
+            // Handle @username specially - remove @ and use from: operator
+            if (str_starts_with($this->searchQuery, '@')) {
+                $username = ltrim($this->searchQuery, '@');
+                $queryParts[] = "from:{$username}";
+            } else {
+                // Escape special characters that might cause issues
+                $escapedQuery = $this->escapeQueryString($this->searchQuery);
+                $queryParts[] = $escapedQuery;
+            }
+        }
+        
+        // Language filter
+        if (!empty($this->language)) {
+            $queryParts[] = "lang:{$this->language}";
+        }
+        
+        // User filter
+        if (!empty($this->fromUser)) {
+            $queryParts[] = "from:{$this->fromUser}";
+        }
+        
+        // Exclude retweets
+        if ($this->excludeRetweets) {
+            $queryParts[] = "-is:retweet";
+        }
+        
+        // Exclude replies
+        if ($this->excludeReplies) {
+            $queryParts[] = "-is:reply";
+        }
+        
+        // Has media
+        if ($this->hasMedia) {
+            $queryParts[] = "has:media";
+        }
+        
+        // Has links
+        if ($this->hasLinks) {
+            $queryParts[] = "has:links";
+        }
+        
+        // Minimum likes - Not available in Basic API access level
+        // These operators require Elevated or Academic Research access
+        // if (!empty($this->minLikes) && is_numeric($this->minLikes)) {
+        //     $queryParts[] = "min_faves:{$this->minLikes}";
+        // }
+        
+        // if (!empty($this->minRetweets) && is_numeric($this->minRetweets)) {
+        //     $queryParts[] = "min_retweets:{$this->minRetweets}";
+        // }
+        
+        // if (!empty($this->minReplies) && is_numeric($this->minReplies)) {
+        //     $queryParts[] = "min_replies:{$this->minReplies}";
+        // }
+        
+        // Date range - Not available in Basic API access level
+        // These operators require Elevated or Academic Research access
+        // if (!empty($this->sinceDate)) {
+        //     $formattedDate = date('Y-m-d', strtotime($this->sinceDate));
+        //     $queryParts[] = "since:{$formattedDate}";
+        // }
+        
+        // if (!empty($this->untilDate)) {
+        //     $formattedDate = date('Y-m-d', strtotime($this->untilDate));
+        //     $queryParts[] = "until:{$formattedDate}";
+        // }
+        
+        // Location - Not available in Basic API access level
+        // These operators require Elevated or Academic Research access
+        // if (!empty($this->nearLocation)) {
+        //     $locationQuery = "near:\"{$this->nearLocation}\"";
+        //     if (!empty($this->withinRadius)) {
+        //         $locationQuery .= " within:{$this->withinRadius}";
+        //     }
+        //     $queryParts[] = $locationQuery;
+        // }
+        
+        // Question tweets - Not available in Basic API access level
+        // This operator requires Elevated or Academic Research access
+        // if ($this->isQuestion) {
+        //     $queryParts[] = "?";
+        // }
+        
+        // Sentiment - Twitter doesn't support :( and :) operators in search
+        // We'll skip sentiment for now as it's not supported by Twitter API v2
+        // if ($this->sentiment === 'positive') {
+        //     $queryParts[] = ":)";
+        // } elseif ($this->sentiment === 'negative') {
+        //     $queryParts[] = ":(";
+        // }
+        
+        // Verified users - Not available in Basic API access level
+        // This operator requires Elevated or Academic Research access
+        // if ($this->isVerified) {
+        //     $queryParts[] = "is:verified";
+        // }
+        
+        return implode(' ', $queryParts);
+    }
+
+    private function escapeQueryString($query)
+    {
+        // Escape special characters that might cause Twitter API issues
+        $query = trim($query);
+        
+        // Handle boolean operators properly for Twitter API
+        $query = $this->formatBooleanOperators($query);
+        
+        // If the query is already quoted, don't escape
+        if (str_starts_with($query, '"') && str_ends_with($query, '"')) {
+            return $query;
+        }
+        
+        // For simple queries, just return as is
+        return $query;
+    }
+
+    private function formatBooleanOperators($query)
+    {
+        // Twitter API uses different syntax for boolean operators
+        // Replace AND with space (implicit AND)
+        $query = preg_replace('/\bAND\b/i', ' ', $query);
+        
+        // Keep OR as is (Twitter supports OR)
+        // $query = preg_replace('/\bOR\b/i', ' OR ', $query);
+        
+        // Handle NOT operator
+        $query = preg_replace('/\bNOT\b/i', '-', $query);
+        
+        // Clean up multiple spaces
+        $query = preg_replace('/\s+/', ' ', $query);
+        
+        // Remove any leading/trailing operators that might cause issues
+        $query = preg_replace('/^[\s\-]+/', '', $query);
+        $query = preg_replace('/[\s\-]+$/', '', $query);
+        
+        return trim($query);
+    }
+
+    public function toggleAdvancedSearch()
+    {
+        $this->advancedSearch = !$this->advancedSearch;
+        
+        if (!$this->advancedSearch) {
+            // Reset advanced search fields when toggling off
+            $this->resetAdvancedSearch();
+        }
+    }
+
+    public function resetAdvancedSearch()
+    {
+        $this->searchQuery = '';
+        $this->language = '';
+        $this->fromUser = '';
+        $this->excludeRetweets = false;
+        $this->excludeReplies = false;
+        $this->hasMedia = false;
+        $this->hasLinks = false;
+        $this->minLikes = '';
+        $this->minRetweets = '';
+        $this->minReplies = '';
+        $this->sinceDate = '';
+        $this->untilDate = '';
+        $this->nearLocation = '';
+        $this->withinRadius = '';
+        $this->isQuestion = false;
+        $this->sentiment = '';
+        $this->isVerified = false;
+    }
+
+    public function performAdvancedSearchAction()
+    {
+        if (empty($this->searchQuery)) {
+            $this->errorMessage = 'Please enter a search query for advanced search.';
+            return;
+        }
+        
+        Log::info('Advanced search action triggered', [
+            'search_query' => $this->searchQuery,
+            'advanced_search' => $this->advancedSearch,
+            'query_built' => $this->buildAdvancedQuery()
+        ]);
+        
+        // Set loading state immediately
+        $this->searchLoading = true;
+        $this->errorMessage = '';
+        $this->successMessage = 'Starting advanced search...';
+        
+        $this->loadTweets();
+    }
+
+    public function clearMessage()
+    {
+        $this->errorMessage = '';
+        $this->successMessage = '';
     }
 
     public function replyToTweet($tweetId)
@@ -377,12 +675,6 @@ class KeywordMonitoringComponent extends Component
         $this->showReplyModal = false;
         $this->selectedTweet = null;
         $this->replyContent = '';
-    }
-
-    public function clearMessage()
-    {
-        $this->errorMessage = '';
-        $this->successMessage = '';
     }
 
     public function refreshTweets()

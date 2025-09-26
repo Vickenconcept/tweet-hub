@@ -1,6 +1,8 @@
 <div class="">
     <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold text-gray-900">Keyword Monitoring</h2>
+        <h2 class="text-2xl font-bold text-gray-900">
+            {{ $advancedSearch ? 'Advanced Search' : 'Keyword Monitoring' }}
+        </h2>
         <div class="flex items-center gap-3">
             @if($lastRefresh)
                 <span class="text-sm text-gray-500">Last updated: {{ $lastRefresh }}</span>
@@ -9,14 +11,27 @@
                     wire:loading.attr="disabled"
                     class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
                 <i class="bx bx-refresh mr-1"></i>
-                <span wire:loading.remove wire:target="loadTweets">Refresh</span>
-                <span wire:loading wire:target="loadTweets">Loading...</span>
+                <span wire:loading.remove wire:target="loadTweets">
+                    {{ $advancedSearch ? 'Search' : 'Refresh' }}
+                </span>
+                <span wire:loading wire:target="loadTweets">
+                    {{ $advancedSearch ? 'Searching...' : 'Loading...' }}
+                </span>
             </button>
         </div>
     </div>
 
-    <!-- Keyword Management Section -->
-    <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200">
+    <!-- Keyword Management Section - Hidden when advanced search is enabled -->
+    @if(!$advancedSearch)
+    <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200 transition-all duration-300 ease-in-out"
+         x-data="{ show: true }"
+         x-show="show"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform scale-95"
+         x-transition:enter-end="opacity-100 transform scale-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100 transform scale-100"
+         x-transition:leave-end="opacity-0 transform scale-95">
         <div class="flex items-center mb-4">
             <div class="w-10 h-10 bg-gradient-to-r from-purple-100 to-purple-200 rounded-xl flex items-center justify-center mr-3">
                 <i class="bx bx-search text-xl text-purple-600"></i>
@@ -73,6 +88,7 @@
             </div>
         @endif
     </div>
+    @endif
 
     <!-- Success/Error Messages -->
     @if($successMessage)
@@ -90,6 +106,256 @@
                 <button @click="show = false; $wire.clearMessage();" class="text-green-600 hover:text-green-800 p-1">
                     <i class="bx bx-x text-lg"></i>
                 </button>
+            </div>
+        </div>
+    @endif
+
+    <!-- Advanced Search Toggle -->
+    <div class="mb-6 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <div class="w-10 h-10 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl flex items-center justify-center mr-3">
+                    <i class="bx bx-cog text-xl text-blue-600"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Advanced Search</h3>
+                    <p class="text-sm text-gray-500">Use powerful search operators and filters for precise results</p>
+                </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" wire:model.live="advancedSearch" class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <span class="ml-3 text-sm font-medium text-gray-700">Enable Advanced Search</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Advanced Search Configuration Panel -->
+    @if($advancedSearch)
+        <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200 transition-all duration-300 ease-in-out"
+             x-data="{ show: true }"
+             x-show="show"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 transform scale-95"
+             x-transition:enter-end="opacity-100 transform scale-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100 transform scale-100"
+             x-transition:leave-end="opacity-0 transform scale-95">
+            <div class="flex items-center mb-6">
+                <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mr-3">
+                    <i class="bx bx-search-alt-2 text-xl text-white"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Advanced Search Configuration</h3>
+                    <p class="text-sm text-gray-600">Build complex queries with filters and operators</p>
+                </div>
+            </div>
+
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Left Column -->
+                <div class="space-y-4">
+                    <!-- Search Query -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Search Query *</label>
+                        <input type="text" 
+                               wire:model="searchQuery" 
+                               placeholder="Enter your search terms (e.g., laravel php, \"exact phrase\", -exclude)"
+                               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <div class="text-xs text-gray-500 mt-1">
+                            <p><strong>Supported operators:</strong> OR, "exact phrase", -exclude, (grouping)</p>
+                            <p><strong>Examples:</strong> laravel php, "web development", -javascript, (react OR vue)</p>
+                            <p><strong>Note:</strong> Use space for AND (implicit), OR for either, - for exclude</p>
+                        </div>
+                    </div>
+
+                    <!-- Language Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Language</label>
+                        <select wire:model="language" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Any Language</option>
+                            <option value="en">English</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="it">Italian</option>
+                            <option value="pt">Portuguese</option>
+                            <option value="ja">Japanese</option>
+                            <option value="ko">Korean</option>
+                            <option value="zh">Chinese</option>
+                        </select>
+                    </div>
+
+                    <!-- User Filter -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">From User</label>
+                        <input type="text" 
+                               wire:model="fromUser" 
+                               placeholder="username (without @)"
+                               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                  
+                </div>
+
+                <!-- Right Column -->
+                <div class="space-y-4">
+                    <!-- Engagement Filters - Commented out for Basic API -->
+                    {{-- <div class="space-y-3">
+                        <h4 class="text-sm font-medium text-gray-700">Engagement Filters</h4>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Min Likes</label>
+                                <input type="number" 
+                                       wire:model="minLikes" 
+                                       placeholder="0"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Min Retweets</label>
+                                <input type="number" 
+                                       wire:model="minRetweets" 
+                                       placeholder="0"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Min Replies</label>
+                                <input type="number" 
+                                       wire:model="minReplies" 
+                                       placeholder="0"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            </div>
+                        </div>
+                    </div> --}}
+
+                      <!-- Content Filters -->
+                      <div class="space-y-3">
+                        <h4 class="text-sm font-medium text-gray-700">Content Filters</h4>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" wire:model="excludeRetweets" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">Exclude Retweets</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" wire:model="excludeReplies" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">Exclude Replies</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" wire:model="hasMedia" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">Has Media (images/videos)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" wire:model="hasLinks" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">Has Links</span>
+                            </label>
+                            {{-- <label class="flex items-center">
+                                <input type="checkbox" wire:model="isQuestion" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">Question Tweets (?)</span>
+                            </label> --}}
+                            {{-- <label class="flex items-center">
+                                <input type="checkbox" wire:model="isVerified" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="ml-2 text-sm text-gray-700">Verified Users Only</span>
+                            </label> --}}
+                        </div>
+                    </div>
+
+                    <!-- Date Range - Commented out for Basic API -->
+                    {{-- <div class="space-y-3">
+                        <h4 class="text-sm font-medium text-gray-700">Date Range</h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Since Date</label>
+                                <input type="date" 
+                                       wire:model="sinceDate" 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                       disabled>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-600 mb-1">Until Date</label>
+                                <input type="date" 
+                                       wire:model="untilDate" 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                       disabled>
+                            </div>
+                        </div>
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <div class="flex items-start">
+                                <i class="bx bx-info-circle text-yellow-600 text-sm mt-0.5 mr-2"></i>
+                                <div class="text-xs text-yellow-800">
+                                    <p><strong>Date filtering requires Elevated API access</strong></p>
+                                    <p>Basic API only searches the last 7 days. Upgrade your Twitter API access to use date range filtering.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div> --}}
+
+                    <!-- Location - Commented out for Basic API -->
+                    {{-- <div class="space-y-3">
+                        <h4 class="text-sm font-medium text-gray-700">Location</h4>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Near Location</label>
+                            <input type="text" 
+                                   wire:model="nearLocation" 
+                                   placeholder="City, State, Country"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                   disabled>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Within Radius</label>
+                            <select wire:model="withinRadius" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" disabled>
+                                <option value="">Any Distance</option>
+                                <option value="1mi">1 mile</option>
+                                <option value="5mi">5 miles</option>
+                                <option value="10mi">10 miles</option>
+                                <option value="25mi">25 miles</option>
+                                <option value="50mi">50 miles</option>
+                                <option value="100mi">100 miles</option>
+                            </select>
+                        </div>
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <div class="flex items-start">
+                                <i class="bx bx-info-circle text-yellow-600 text-sm mt-0.5 mr-2"></i>
+                                <div class="text-xs text-yellow-800">
+                                    <p><strong>Location filtering requires Elevated API access</strong></p>
+                                    <p>Basic API does not support location-based search. Upgrade your Twitter API access to use location filtering.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div> --}}
+
+                    <!-- Sentiment - Commented out for Basic API -->
+                    {{-- <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Sentiment</label>
+                        <select wire:model="sentiment" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500" disabled>
+                            <option value="">Sentiment not supported by Twitter API</option>
+                            <option value="positive">Positive :)</option>
+                            <option value="negative">Negative :(</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Sentiment filtering is not available in Twitter API v2</p>
+                    </div> --}}
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex items-center justify-between mt-6 pt-6 border-t border-blue-200">
+                <div class="text-sm text-gray-600">
+                    <strong>Query Preview:</strong> <code class="bg-gray-100 px-2 py-1 rounded text-xs">{{ $this->buildAdvancedQuery() ?: 'Enter search terms to see query preview' }}</code>
+                </div>
+                <div class="flex gap-3">
+                    <button wire:click="resetAdvancedSearch" 
+                            class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                        <i class="bx bx-reset mr-1"></i>
+                        Reset
+                    </button>
+                    <button wire:click="performAdvancedSearchAction" 
+                            wire:loading.attr="disabled"
+                            class="px-6 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-colors disabled:opacity-50">
+                        <i class="bx bx-search mr-1" wire:loading.remove wire:target="performAdvancedSearchAction"></i>
+                        <i class="bx bx-loader-alt animate-spin mr-1" wire:loading wire:target="performAdvancedSearchAction"></i>
+                        <span wire:loading.remove wire:target="performAdvancedSearchAction">Search</span>
+                        <span wire:loading wire:target="performAdvancedSearchAction">Searching...</span>
+                    </button>
+                </div>
             </div>
         </div>
     @endif
@@ -121,8 +387,20 @@
         <div class="text-center py-12 text-gray-500">
             <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
                 <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Searching Tweets...</h3>
-                <p class="text-gray-600 mb-4" x-text="loadingMessage || 'Looking for tweets containing your monitored keywords'"></p>
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">
+                    {{ $advancedSearch ? 'Advanced Search in Progress...' : 'Searching Tweets...' }}
+                </h3>
+                <p class="text-gray-600 mb-4" x-text="loadingMessage || '{{ $advancedSearch ? "Looking for tweets that match your advanced search criteria" : "Looking for tweets containing your monitored keywords" }}'"></p>
+                @if($advancedSearch && !empty($searchQuery))
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                        <p class="text-sm text-blue-800">
+                            <strong>Search Query:</strong> <code class="bg-blue-100 px-2 py-1 rounded text-xs">{{ $searchQuery }}</code>
+                        </p>
+                        <p class="text-xs text-blue-600 mt-1">
+                            <strong>Full Query:</strong> <code class="bg-blue-100 px-2 py-1 rounded text-xs">{{ $this->buildAdvancedQuery() }}</code>
+                        </p>
+                    </div>
+                @endif
                 <p class="text-xs text-gray-500">This may take a few moments...</p>
             </div>
         </div>

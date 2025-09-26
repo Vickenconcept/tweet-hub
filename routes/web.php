@@ -51,6 +51,8 @@ Route::middleware(['auth'])->group(function () {
     Route::view('queued-posts', 'queued-posts')->name('queued-posts');
     Route::view('twitter-mentions', 'twitter-mentions')->name('twitter-mentions');
     Route::view('keyword-monitoring', 'keyword-monitoring')->name('keyword-monitoring');
+    Route::view('tweet-analytics', 'tweet-analytics')->name('tweet-analytics');
+    Route::view('bookmarks-management', 'bookmarks-management')->name('bookmarks-management');
     Route::view('user-management', 'user-management')->name('user-management');
     Route::view('assets', 'assets')->name('assets');
     

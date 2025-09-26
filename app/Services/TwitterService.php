@@ -242,7 +242,7 @@ class TwitterService
     /**
      * Search tweets directly using Twitter API v2 search/recent endpoint.
      */
-    private function searchTweetsDirect($query, $pageSize = 10)
+    public function searchTweetsDirect($query, $pageSize = 10)
     {
         try {
             // Twitter API v2 search requires Bearer Token authentication
@@ -1065,9 +1065,40 @@ class TwitterService
     /**
      * Lookup a user's bookmarks.
      */
-    public function getBookmarks()
+    public function getBookmarks($userId = null)
     {
+        if ($userId) {
+            return $this->client->tweetBookmarks()->lookup($userId)->performRequest();
+        }
         return $this->client->tweetBookmarks()->lookup()->performRequest();
+    }
+
+    /**
+     * Add a bookmark to a tweet.
+     */
+    public function addBookmark($tweetId)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->twitter_account_id) {
+            throw new \Exception('User not authenticated or Twitter account not connected');
+        }
+
+        // Bookmarks require OAuth 2.0 which is not available with current setup
+        throw new \Exception('Bookmark functionality requires OAuth 2.0 authorization. This feature is not available with your current Twitter API access level. Please upgrade your Twitter API access or contact support.');
+    }
+
+    /**
+     * Remove a bookmark from a tweet.
+     */
+    public function removeBookmark($tweetId)
+    {
+        $user = Auth::user();
+        if (!$user || !$user->twitter_account_id) {
+            throw new \Exception('User not authenticated or Twitter account not connected');
+        }
+
+        // Bookmarks require OAuth 2.0 which is not available with current setup
+        throw new \Exception('Bookmark functionality requires OAuth 2.0 authorization. This feature is not available with your current Twitter API access level. Please upgrade your Twitter API access or contact support.');
     }
 
     // Users endpoints
