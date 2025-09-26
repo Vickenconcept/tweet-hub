@@ -63,7 +63,7 @@
     <div id="app" class="h-full  text-gray-700 ">
         <x-notification />
         <livewire:connect-x-modal />
-        {{-- <x-navbar /> --}}
+        <x-navbar />
         <x-sidebar />
         
 

@@ -252,6 +252,7 @@ class DailyPostIdeasComponent extends Component
         if (isset($this->ideas[$actualIndex])) {
             $idea = $this->ideas[$actualIndex];
             $this->dispatch('edit-idea-in-chat', idea: $idea);
+            $this->dispatch('open-chat'); // Dispatch event to open chat
             $this->successMessage = 'Idea sent to chat for editing!';
         }
     }
