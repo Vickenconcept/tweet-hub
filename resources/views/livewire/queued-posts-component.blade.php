@@ -86,7 +86,7 @@
 
     <!-- Edit Modal -->
     @if($showEditModal)
-        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div class="bg-white rounded-2xl p-8 w-full max-w-lg mx-4 shadow-2xl shadow-gray-200">
                 <div class="flex items-center mb-6">
                     <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center mr-3">

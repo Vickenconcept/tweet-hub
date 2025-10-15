@@ -46,18 +46,28 @@
         <div class="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl shadow-sm" 
              x-data="{ show: true }" 
              x-show="show" 
-             x-init="setTimeout(() => { show = false; $wire.clearErrorMessage(); }, 8000)">
+             x-init="setTimeout(() => { show = false; $wire.clearErrorMessage(); }, 10000)">
             <div class="flex items-start justify-between">
-                <div class="flex items-start">
+                <div class="flex items-start flex-1">
                     <i class="bx bx-error-circle text-xl mr-2 mt-0.5"></i>
-                    <div>
+                    <div class="flex-1">
                         <p class="font-medium text-lg">{{ $errorMessage }}</p>
                         @if(str_contains($errorMessage, 'Rate limit exceeded'))
-                            <p class="text-sm mt-1 text-red-600">Twitter API has rate limits. Try again in a few minutes.</p>
+                            <p class="text-sm mt-2 text-red-600">
+                                <i class="bx bx-info-circle mr-1"></i>
+                                Twitter API has rate limits to prevent abuse. Try again in a few minutes.
+                            </p>
+                            <div class="mt-3">
+                                <button wire:click="loadMentions" 
+                                        class="px-4 py-2 text-sm font-medium text-red-700 bg-red-200 rounded-lg hover:bg-red-300 transition-colors cursor-pointer">
+                                    <i class="bx bx-refresh mr-1"></i>
+                                    Try Again
+                                </button>
+                            </div>
                         @endif
                     </div>
                 </div>
-                <button @click="show = false; $wire.clearErrorMessage();" class="text-red-600 hover:text-red-800 p-1">
+                <button @click="show = false; $wire.clearErrorMessage();" class="text-red-600 hover:text-red-800 p-1 ml-2">
                     <i class="bx bx-x text-lg"></i>
                 </button>
             </div>
@@ -80,34 +90,63 @@
         <!-- Mentions List -->
         <div class="space-y-4">
             @foreach($this->getPaginatedMentions() as $mention)
+                @php
+                    $mentionAuthorId = is_object($mention) ? ($mention->author_id ?? null) : ($mention['author_id'] ?? null);
+                    $mentionText = is_object($mention) ? ($mention->text ?? 'No content') : ($mention['text'] ?? 'No content');
+                    $mentionCreatedAt = is_object($mention) ? ($mention->created_at ?? null) : ($mention['created_at'] ?? null);
+                    $mentionId = is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null);
+                    
+                    // Get user information
+                    $user = $this->getUserByAuthorId($mentionAuthorId);
+                    $userName = $user ? (is_object($user) ? ($user->name ?? 'Unknown User') : ($user['name'] ?? 'Unknown User')) : 'Unknown User';
+                    $userUsername = $user ? (is_object($user) ? ($user->username ?? null) : ($user['username'] ?? null)) : null;
+                    $userProfileImage = $user ? (is_object($user) ? ($user->profile_image_url ?? null) : ($user['profile_image_url'] ?? null)) : null;
+                    $userDescription = $user ? (is_object($user) ? ($user->description ?? null) : ($user['description'] ?? null)) : null;
+                    $userMetrics = $user ? (is_object($user) ? ($user->public_metrics ?? null) : ($user['public_metrics'] ?? null)) : null;
+                    $followersCount = $userMetrics ? (is_object($userMetrics) ? ($userMetrics->followers_count ?? 0) : ($userMetrics['followers_count'] ?? 0)) : 0;
+                @endphp
                 <div class="p-6 rounded-2xl bg-white hover:shadow-blue-100 transition-all duration-500 ease-in-out shadow-2xl shadow-gray-200">
                     <div class="flex items-start gap-3">
                         <div class="flex-shrink-0">
-                            <div class="w-12 h-12 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl flex items-center justify-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-blue-600">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-                                </svg>
-                            </div>
+                            @if($userProfileImage)
+                                <img src="{{ $userProfileImage }}" 
+                                     alt="{{ $userName }}" 
+                                     class="w-12 h-12 rounded-full">
+                            @else
+                                <div class="w-12 h-12 bg-gradient-to-r from-blue-100 to-blue-200 rounded-full flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-blue-600">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                                    </svg>
+                                </div>
+                            @endif
                         </div>
                         <div class="flex-1">
-                            <div class="flex items-center gap-3 mb-4">
-                                <span class="font-semibold text-gray-500 text-md">{{ $mention->author_id ?? 'Unknown User' }}</span>
-                                <span class="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">
-                                    {{ isset($mention->created_at) ? \Carbon\Carbon::parse($mention->created_at)->diffForHumans() : '' }}
+                            <div class="flex items-center gap-3 mb-2">
+                                <div>
+                                    <span class="font-semibold text-gray-900 text-md block">{{ $userName }}</span>
+                                    @if($userUsername)
+                                        <span class="text-sm text-gray-500">@{{ $userUsername }}</span>
+                                    @endif
+                                    @if($followersCount > 0)
+                                        <span class="text-xs text-gray-400 ml-2">• {{ number_format($followersCount) }} followers</span>
+                                    @endif
+                                </div>
+                                <span class="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded-lg ml-auto">
+                                    {{ $mentionCreatedAt ? \Carbon\Carbon::parse($mentionCreatedAt)->diffForHumans() : '' }}
                                 </span>
                             </div>
-                            <p class="text-gray-800 mb-4 text-md leading-relaxed">{{ $mention->text ?? 'No content' }}</p>
+                            <p class="text-gray-800 mb-4 text-md leading-relaxed">{{ $mentionText }}</p>
                             
                             <!-- Action Buttons -->
                             <div class="flex items-center gap-3">
-                                <button wire:click="replyToMention('{{ $mention->id }}')" 
+                                <button wire:click="replyToMention('{{ $mentionId }}')" 
                                         class="px-4 py-2 text-sm text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 hover:bg-blue-200 rounded-xl transition-colors cursor-pointer">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 inline mr-1">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
                                     </svg>
                                     Reply
                                 </button>
-                                <button wire:click="likeMention('{{ $mention->id }}')" 
+                                <button wire:click="likeMention('{{ $mentionId }}')" 
                                         class="like-button px-4 py-2 text-sm text-red-600 bg-gradient-to-r from-red-100 to-red-200 hover:bg-red-200 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden group"
                                         x-data="{ 
                                             liked: false, 
@@ -116,7 +155,7 @@
                                                 if (this.animating) return;
                                                 this.animating = true;
                                                 this.liked = true;
-                                                $wire.likeMention('{{ $mention->id }}');
+                                                $wire.likeMention('{{ $mentionId }}');
                                                 setTimeout(() => {
                                                     this.liked = false;
                                                     this.animating = false;
@@ -152,7 +191,7 @@
                                         <div x-show="liked" class="absolute inset-0 bg-red-200 opacity-30 animate-ping"></div>
                                     </div>
                                 </button>
-                                <button wire:click="retweetMention('{{ $mention->id }}')" 
+                                <button wire:click="retweetMention('{{ $mentionId }}')" 
                                         class="px-4 py-2 text-sm text-green-600 bg-gradient-to-r from-green-100 to-green-200 hover:bg-green-200 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden"
                                         x-data="{ 
                                             retweeted: false, 
@@ -161,7 +200,7 @@
                                                 if (this.animating) return;
                                                 this.animating = true;
                                                 this.retweeted = true;
-                                                $wire.retweetMention('{{ $mention->id }}');
+                                                $wire.retweetMention('{{ $mentionId }}');
                                                 setTimeout(() => {
                                                     this.retweeted = false;
                                                     this.animating = false;
@@ -197,7 +236,7 @@
                                         <div x-show="retweeted" class="absolute inset-0 bg-green-200 opacity-30 animate-ping"></div>
                                     </div>
                                 </button>
-                                <a href="https://twitter.com/i/status/{{ $mention->id }}" 
+                                <a href="https://twitter.com/i/status/{{ $mentionId }}" 
                                    target="_blank" 
                                    rel="noopener noreferrer"
                                    class="px-4 py-2 text-sm text-purple-600 bg-gradient-to-r from-purple-100 to-purple-200 hover:bg-purple-200 rounded-xl transition-colors inline-flex items-center cursor-pointer">

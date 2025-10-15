@@ -117,7 +117,7 @@ class GeneratePostIdeasComponent extends Component
         - A complete, human-written post that someone would actually publish
         - Engaging, conversational, and authentic in tone
         - Include relevant hashtags naturally within the content
-        - Be between 150-279 words (optimized for Twitter/X character limits)
+        - Not more than 279 characters
         - Have a compelling hook and clear value for the audience
         - Feel like it was written by a real person, not an AI
         

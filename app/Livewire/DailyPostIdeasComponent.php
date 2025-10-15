@@ -139,7 +139,7 @@ class DailyPostIdeasComponent extends Component
                       - A complete, human-written post that someone would actually post on social media
                       - Engaging, conversational, and authentic in tone
                       - Include relevant hashtags naturally within the content
-                      - Be between 150-250 words
+                      - Not more than 279 characters
                       - Have a compelling hook and clear value for the audience
                       - Feel like it was written by a real person, not an AI
                       

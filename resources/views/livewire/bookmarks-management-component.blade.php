@@ -323,7 +323,7 @@
 
     <!-- Add Bookmark Modal -->
     @if($showAddBookmarkModal)
-        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" wire:click.self="$set('showAddBookmarkModal', false)">
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" wire:click.self="$set('showAddBookmarkModal', false)">
             <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-gray-900">Add Bookmark</h3>

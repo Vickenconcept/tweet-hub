@@ -11,6 +11,7 @@ use Livewire\Component;
 class TwitterMentionsComponent extends Component
 {
     public $mentions = [];
+    public $users = []; // Store user information
     public $loading = false;
     public $errorMessage = '';
     public $successMessage = '';
@@ -60,6 +61,7 @@ class TwitterMentionsComponent extends Component
         if ($cachedMentions) {
                 \Log::info('Loading mentions from cache', ['cache_key' => $cacheKey, 'mentions_count' => count($cachedMentions['data'] ?? [])]);
             $this->mentions = $cachedMentions['data'] ?? [];
+            $this->users = $cachedMentions['users'] ?? [];
             $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
             $this->currentPage = 1; // Reset to first page when loading from cache
                 $this->successMessage = 'Mentions loaded from cache. Click refresh to get latest mentions.';
@@ -112,17 +114,31 @@ class TwitterMentionsComponent extends Component
             if (is_object($mentionsResponse)) {
                 if (isset($mentionsResponse->data)) {
                     $this->mentions = is_array($mentionsResponse->data) ? $mentionsResponse->data : (array) $mentionsResponse->data;
+                    
+                    // Extract user information if available
+                    if (isset($mentionsResponse->includes) && isset($mentionsResponse->includes->users)) {
+                        $this->users = is_array($mentionsResponse->includes->users) ? 
+                            $mentionsResponse->includes->users : 
+                            (array) $mentionsResponse->includes->users;
+                    }
                 } elseif (isset($mentionsResponse->errors)) {
                     throw new \Exception('Twitter API returned errors: ' . json_encode($mentionsResponse->errors));
                 } else {
                     // Response might be empty or have different structure
                     $this->mentions = [];
+                    $this->users = [];
                 }
             } elseif (is_array($mentionsResponse)) {
                 if (isset($mentionsResponse['data'])) {
                     $this->mentions = $mentionsResponse['data'];
+                    
+                    // Extract user information if available
+                    if (isset($mentionsResponse['includes']) && isset($mentionsResponse['includes']['users'])) {
+                        $this->users = $mentionsResponse['includes']['users'];
+                    }
                 } else {
                     $this->mentions = [];
+                    $this->users = [];
                 }
             } else {
                 throw new \Exception('Unexpected API response format: ' . gettype($mentionsResponse));
@@ -142,6 +158,7 @@ class TwitterMentionsComponent extends Component
             // Cache the results for 15 minutes
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
                 'data' => $this->mentions,
+                'users' => $this->users,
                 'timestamp' => $this->lastRefresh
             ], 900);
 
@@ -149,12 +166,22 @@ class TwitterMentionsComponent extends Component
             $statusCode = $e->getResponse()->getStatusCode();
             
             if ($statusCode === 429) {
-                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again.';
+                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+            } elseif ($statusCode === 401) {
+                $this->errorMessage = 'Authentication failed. Please check your Twitter connection.';
+            } elseif ($statusCode === 403) {
+                $this->errorMessage = 'Access forbidden. You may not have permission to access this data.';
             } else {
                 $this->errorMessage = "Failed to load mentions: HTTP {$statusCode}";
             }
         } catch (\Exception $e) {
-            $this->errorMessage = 'Failed to load mentions: ' . $e->getMessage();
+            // Check if error message contains rate limit info
+            if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
+                strpos($e->getMessage(), 'Rate limit') !== false) {
+                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+            } else {
+                $this->errorMessage = 'Failed to load mentions: ' . $e->getMessage();
+            }
         }
 
         $this->loading = false;
@@ -495,6 +522,17 @@ class TwitterMentionsComponent extends Component
     public function getTotalPages()
     {
         return ceil(count($this->mentions) / $this->perPage);
+    }
+
+    public function getUserByAuthorId($authorId)
+    {
+        foreach ($this->users as $user) {
+            $userId = is_object($user) ? ($user->id ?? null) : ($user['id'] ?? null);
+            if ($userId == $authorId) {
+                return $user;
+            }
+        }
+        return null;
     }
 
     public function render()
