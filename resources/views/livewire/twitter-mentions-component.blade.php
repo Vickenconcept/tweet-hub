@@ -8,14 +8,16 @@
             <button wire:click="loadMentions" 
                     wire:loading.attr="disabled"
                     class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
-                <i class="bx bx-refresh mr-1"></i>
-                <span wire:loading.remove wire:target="loadMentions">Refresh</span>
+                <i class="bx bx-data mr-1"></i>
+                <span wire:loading.remove wire:target="loadMentions">Load from Cache</span>
                 <span wire:loading wire:target="loadMentions">Loading...</span>
             </button>
             <button wire:click="refreshMentions" 
+                    wire:loading.attr="disabled"
                     class="px-4 py-2 text-sm font-medium text-green-600 bg-gradient-to-r from-green-100 to-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer">
                 <i class="bx bx-sync mr-1"></i>
-                Sync
+                <span wire:loading.remove wire:target="refreshMentions">Sync Fresh Data</span>
+                <span wire:loading wire:target="refreshMentions">Syncing...</span>
             </button>
 
         </div>
@@ -82,8 +84,8 @@
             <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
                 <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
                 <h3 class="text-xl font-semibold text-gray-700 mb-4">Loading Mentions...</h3>
-                <p class="text-gray-600 mb-4" x-text="loadingMessage || 'Fetching your latest Twitter mentions'"></p>
-                <p class="text-xs text-gray-500">This may take a few moments...</p>
+                <p class="text-gray-600 mb-4">Fetching your latest Twitter mentions from cache or API</p>
+                <p class="text-xs text-gray-500">This uses cached data when available to avoid rate limits</p>
             </div>
         </div>
     @elseif(count($mentions) > 0)
@@ -360,37 +362,3 @@
         </div>
     @endif
 </div>
-
-<script>
-document.addEventListener('livewire:init', () => {
-    let loadingMessage = 'Preparing to load mentions...';
-    
-    // Handle delayed loading
-    Livewire.on('delayed-load-mentions', () => {
-        // Show initial message
-        document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
-        
-        // Countdown timer
-        let countdown = 2;
-        const timer = setInterval(() => {
-            if (countdown > 0) {
-                loadingMessage = `Loading mentions in ${countdown} seconds...`;
-                document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
-                countdown--;
-            } else {
-                clearInterval(timer);
-                loadingMessage = 'Fetching your latest Twitter mentions';
-                document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
-                @this.call('loadMentions');
-            }
-        }, 1000);
-    });
-    
-    // Handle start delayed loading
-    Livewire.on('start-delayed-loading', () => {
-        setTimeout(() => {
-            @this.call('loadMentions');
-        }, 100); // Small delay to show loading state
-    });
-});
-</script> 

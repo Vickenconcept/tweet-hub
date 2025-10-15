@@ -23,6 +23,7 @@ class KeywordMonitoringComponent extends Component
     public $currentPage = 1;
     public $perPage = 10;
     public $searchLoading = false;
+    private $isLoading = false; // Prevent concurrent loads
     
     // Advanced Search Properties
     public $advancedSearch = false;
@@ -58,15 +59,10 @@ class KeywordMonitoringComponent extends Component
     {
         $this->loadKeywords();
         
-        // Only show loading if we have keywords to search for
-        if (!empty($this->keywords)) {
-            $this->searchLoading = true;
-            $this->successMessage = 'Preparing to search tweets...';
-            
-            // Schedule delayed loading after 2 seconds
-            $this->dispatch('delayed-load-tweets');
+        // Load tweets directly if we have keywords (uses cache when available)
+        if (!empty($this->keywords) || $this->advancedSearch) {
+            $this->loadTweets();
         } else {
-            $this->searchLoading = false;
             $this->tweets = [];
             $this->lastRefresh = now()->format('M j, Y g:i A');
         }
@@ -133,8 +129,14 @@ class KeywordMonitoringComponent extends Component
         }
     }
 
-    public function loadTweets()
+    public function loadTweets($forceRefresh = false)
     {
+        // Prevent concurrent loads
+        if ($this->isLoading) {
+            Log::info('Load already in progress, skipping duplicate request');
+            return;
+        }
+        
         // For advanced search, we don't need keywords
         if (!$this->advancedSearch && empty($this->keywords)) {
             $this->tweets = [];
@@ -150,6 +152,7 @@ class KeywordMonitoringComponent extends Component
             return;
         }
 
+        $this->isLoading = true;
         $this->searchLoading = true;
         $this->errorMessage = '';
         $this->successMessage = '';
@@ -158,13 +161,36 @@ class KeywordMonitoringComponent extends Component
         if (!$user) {
             $this->errorMessage = 'User not authenticated.';
             $this->searchLoading = false;
+            $this->isLoading = false;
             return;
         }
 
         if (!$user->twitter_account_connected || !$user->twitter_access_token || !$user->twitter_access_token_secret) {
             $this->errorMessage = 'Please connect your Twitter account first.';
             $this->searchLoading = false;
+            $this->isLoading = false;
             return;
+        }
+        
+        // Generate cache key based on keywords or advanced search query
+        $cacheKey = 'keyword_search_' . $user->id . '_' . md5($this->advancedSearch ? $this->buildAdvancedQuery() : implode(',', $this->keywords));
+        
+        // Check cache first (only if not forcing refresh)
+        if (!$forceRefresh) {
+            $cachedTweets = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            
+            if ($cachedTweets) {
+                Log::info('Loading tweets from cache', ['cache_key' => $cacheKey, 'tweets_count' => count($cachedTweets['data'] ?? [])]);
+                $this->tweets = $cachedTweets['data'] ?? [];
+                $this->lastRefresh = $cachedTweets['timestamp'] ?? now()->format('M j, Y g:i A');
+                $this->currentPage = 1;
+                $this->successMessage = 'Tweets loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Refresh for fresh data.';
+                $this->searchLoading = false;
+                $this->isLoading = false;
+                return;
+            }
+        } else {
+            Log::info('Force refresh requested - bypassing cache');
         }
 
         try {
@@ -275,6 +301,12 @@ class KeywordMonitoringComponent extends Component
             } else {
                 $this->successMessage = "No tweets found. Try adjusting your " . ($this->advancedSearch ? 'search criteria' : 'keywords') . " or check back later.";
             }
+            
+            // Cache the results for 1 hour to reduce API calls
+            \Illuminate\Support\Facades\Cache::put($cacheKey, [
+                'data' => $this->tweets,
+                'timestamp' => $this->lastRefresh
+            ], 3600); // 1 hour cache
 
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $statusCode = $e->getResponse()->getStatusCode();
@@ -287,7 +319,11 @@ class KeywordMonitoringComponent extends Component
             ]);
             
             if ($statusCode === 429) {
-                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again.';
+                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+            } elseif ($statusCode === 401) {
+                $this->errorMessage = 'Authentication failed. Please check your Twitter connection.';
+            } elseif ($statusCode === 403) {
+                $this->errorMessage = 'Access forbidden. You may not have permission to access this data.';
             } elseif ($statusCode === 400) {
                 // Parse the error response to get more specific information
                 $errorData = json_decode($responseBody, true);
@@ -304,10 +340,18 @@ class KeywordMonitoringComponent extends Component
                 'error' => $e->getMessage(),
                 'query' => $this->advancedSearch ? $this->buildAdvancedQuery() : 'keyword search'
             ]);
-            $this->errorMessage = 'Failed to search tweets: ' . $e->getMessage();
+            
+            // Check if error message contains rate limit info
+            if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
+                strpos($e->getMessage(), 'Rate limit') !== false) {
+                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+            } else {
+                $this->errorMessage = 'Failed to search tweets: ' . $e->getMessage();
+            }
         }
 
         $this->searchLoading = false;
+        $this->isLoading = false;
     }
 
     private function performAdvancedSearch($twitterService)
@@ -686,17 +730,8 @@ class KeywordMonitoringComponent extends Component
 
     public function refreshTweets()
     {
-        $this->loadTweets();
-    }
-
-    public function delayedLoadTweets()
-    {
-        // Add a 2-second delay before loading tweets
-        $this->searchLoading = true;
-        $this->successMessage = 'Loading tweets...';
-        
-        // Use JavaScript setTimeout to delay the actual loading
-        $this->dispatch('start-delayed-loading');
+        // Force refresh to bypass cache
+        $this->loadTweets(true);
     }
 
     public function nextPage()

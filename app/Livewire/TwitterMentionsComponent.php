@@ -21,19 +21,23 @@ class TwitterMentionsComponent extends Component
     public $showReplyModal = false;
     public $currentPage = 1;
     public $perPage = 5;
+    private $isLoading = false; // Prevent concurrent loads
 
     public function mount()
     {
-        // Show loading animation immediately
-        $this->loading = true;
-        $this->successMessage = 'Preparing to load mentions...';
-        
-        // Schedule delayed loading after 2 seconds
-        $this->dispatch('delayed-load-mentions');
+        // Load mentions directly from cache or API - no delays needed
+        $this->loadMentions();
     }
 
     public function loadMentions($forceRefresh = false)
     {
+        // Prevent concurrent loads
+        if ($this->isLoading) {
+            Log::info('Load already in progress, skipping duplicate request');
+            return;
+        }
+        
+        $this->isLoading = true;
         $this->loading = true;
         $this->errorMessage = '';
         $this->successMessage = '';
@@ -42,12 +46,14 @@ class TwitterMentionsComponent extends Component
         if (!$user) {
             $this->errorMessage = 'User not authenticated.';
             $this->loading = false;
+            $this->isLoading = false;
             return;
         }
 
         if (!$user->twitter_account_connected || !$user->twitter_account_id || !$user->twitter_access_token || !$user->twitter_access_token_secret) {
             $this->errorMessage = 'Please connect your Twitter account first.';
             $this->loading = false;
+            $this->isLoading = false;
             return;
         }
 
@@ -64,8 +70,9 @@ class TwitterMentionsComponent extends Component
             $this->users = $cachedMentions['users'] ?? [];
             $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
             $this->currentPage = 1; // Reset to first page when loading from cache
-                $this->successMessage = 'Mentions loaded from cache. Click refresh to get latest mentions.';
+                $this->successMessage = 'Mentions loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Sync for fresh data.';
             $this->loading = false;
+            $this->isLoading = false;
             return;
             }
         } else {
@@ -84,24 +91,10 @@ class TwitterMentionsComponent extends Component
 
             $twitterService = new TwitterService($settings);
             
-            // Try fast search method first for better performance and real-time data
-            try {
-                Log::info('Attempting fast mentions search');
-                $mentionsResponse = $twitterService->getRecentMentionsFast($user->twitter_account_id);
-                Log::info('Fast mentions search successful - using real-time search API');
-            } catch (\Exception $e) {
-                Log::warning('Fast mentions search failed, falling back to timeline method', ['error' => $e->getMessage()]);
-                try {
-                    $mentionsResponse = $twitterService->getRecentMentions($user->twitter_account_id);
-                    Log::info('Timeline method successful - using mentions timeline API');
-                } catch (\Exception $e2) {
-                    Log::error('Both fast and timeline methods failed', [
-                        'fast_error' => $e->getMessage(),
-                        'timeline_error' => $e2->getMessage()
-                    ]);
-                    throw $e2;
-                }
-            }
+            // Use timeline method (single API call - more reliable and avoids double rate limit hits)
+            Log::info('Fetching mentions using timeline API', ['user_id' => $user->twitter_account_id]);
+            $mentionsResponse = $twitterService->getRecentMentions($user->twitter_account_id);
+            Log::info('Mentions fetched successfully');
 
             // Log the response for debugging
             Log::info('Twitter API Response', [
@@ -155,12 +148,12 @@ class TwitterMentionsComponent extends Component
                 $this->successMessage = "No mentions found. This could mean no one has mentioned you recently, or your account hasn't been mentioned yet.";
             }
 
-            // Cache the results for 15 minutes
+            // Cache the results for 1 hour to reduce API calls
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
                 'data' => $this->mentions,
                 'users' => $this->users,
                 'timestamp' => $this->lastRefresh
-            ], 900);
+            ], 3600); // 1 hour cache
 
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $statusCode = $e->getResponse()->getStatusCode();
@@ -185,6 +178,7 @@ class TwitterMentionsComponent extends Component
         }
 
         $this->loading = false;
+        $this->isLoading = false;
     }
 
     public function replyToMention($mentionId)

@@ -10,13 +10,20 @@
             <button wire:click="loadTweets" 
                     wire:loading.attr="disabled"
                     class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
-                <i class="bx bx-refresh mr-1"></i>
+                <i class="bx bx-data mr-1"></i>
                 <span wire:loading.remove wire:target="loadTweets">
-                    {{ $advancedSearch ? 'Search' : 'Refresh' }}
+                    Load from Cache
                 </span>
                 <span wire:loading wire:target="loadTweets">
-                    {{ $advancedSearch ? 'Searching...' : 'Loading...' }}
+                    Loading...
                 </span>
+            </button>
+            <button wire:click="refreshTweets" 
+                    wire:loading.attr="disabled"
+                    class="px-4 py-2 text-sm font-medium text-green-600 bg-gradient-to-r from-green-100 to-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer">
+                <i class="bx bx-sync mr-1"></i>
+                <span wire:loading.remove wire:target="refreshTweets">Sync Fresh Data</span>
+                <span wire:loading wire:target="refreshTweets">Syncing...</span>
             </button>
         </div>
     </div>
@@ -364,18 +371,28 @@
         <div class="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl shadow-sm" 
              x-data="{ show: true }" 
              x-show="show" 
-             x-init="setTimeout(() => { show = false; $wire.clearMessage(); }, 8000)">
+             x-init="setTimeout(() => { show = false; $wire.clearMessage(); }, 10000)">
             <div class="flex items-start justify-between">
-                <div class="flex items-start">
+                <div class="flex items-start flex-1">
                     <i class="bx bx-error-circle text-xl mr-2 mt-0.5"></i>
-                    <div>
+                    <div class="flex-1">
                         <p class="font-medium text-lg">{{ $errorMessage }}</p>
                         @if(str_contains($errorMessage, 'Rate limit exceeded'))
-                            <p class="text-sm mt-1 text-red-600">Twitter API has rate limits. Try again in a few minutes.</p>
+                            <p class="text-sm mt-2 text-red-600">
+                                <i class="bx bx-info-circle mr-1"></i>
+                                Twitter API has rate limits to prevent abuse. Try again in a few minutes.
+                            </p>
+                            <div class="mt-3">
+                                <button wire:click="loadTweets" 
+                                        class="px-4 py-2 text-sm font-medium text-red-700 bg-red-200 rounded-lg hover:bg-red-300 transition-colors cursor-pointer">
+                                    <i class="bx bx-refresh mr-1"></i>
+                                    Try Again
+                                </button>
+                            </div>
                         @endif
                     </div>
                 </div>
-                <button @click="show = false; $wire.clearMessage();" class="text-red-600 hover:text-red-800 p-1">
+                <button @click="show = false; $wire.clearMessage();" class="text-red-600 hover:text-red-800 p-1 ml-2">
                     <i class="bx bx-x text-lg"></i>
                 </button>
             </div>
@@ -390,7 +407,8 @@
                 <h3 class="text-xl font-semibold text-gray-700 mb-4">
                     {{ $advancedSearch ? 'Advanced Search in Progress...' : 'Searching Tweets...' }}
                 </h3>
-                <p class="text-gray-600 mb-4" x-text="loadingMessage || '{{ $advancedSearch ? "Looking for tweets that match your advanced search criteria" : "Looking for tweets containing your monitored keywords" }}'"></p>
+                <p class="text-gray-600 mb-4">{{ $advancedSearch ? "Looking for tweets that match your advanced search criteria" : "Looking for tweets containing your monitored keywords" }}</p>
+                <p class="text-xs text-gray-500">Using cached data when available to avoid rate limits</p>
                 @if($advancedSearch && !empty($searchQuery))
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
                         <p class="text-sm text-blue-800">
@@ -401,7 +419,6 @@
                         </p>
                     </div>
                 @endif
-                <p class="text-xs text-gray-500">This may take a few moments...</p>
             </div>
         </div>
     @elseif(count($tweets) > 0)
@@ -675,36 +692,3 @@
     @endif
 </div>
 
-<script>
-document.addEventListener('livewire:init', () => {
-    let loadingMessage = 'Preparing to search tweets...';
-    
-    // Handle delayed loading
-    Livewire.on('delayed-load-tweets', () => {
-        // Show initial message
-        document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
-        
-        // Countdown timer
-        let countdown = 2;
-        const timer = setInterval(() => {
-            if (countdown > 0) {
-                loadingMessage = `Searching tweets in ${countdown} seconds...`;
-                document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
-                countdown--;
-            } else {
-                clearInterval(timer);
-                loadingMessage = 'Looking for tweets containing your monitored keywords';
-                document.querySelector('[x-text*="loadingMessage"]').textContent = loadingMessage;
-                @this.call('loadTweets');
-            }
-        }, 1000);
-    });
-    
-    // Handle start delayed loading
-    Livewire.on('start-delayed-loading', () => {
-        setTimeout(() => {
-            @this.call('loadTweets');
-        }, 100); // Small delay to show loading state
-    });
-});
-</script>
