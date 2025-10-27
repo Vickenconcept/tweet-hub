@@ -148,12 +148,12 @@ class TwitterMentionsComponent extends Component
                 $this->successMessage = "No mentions found. This could mean no one has mentioned you recently, or your account hasn't been mentioned yet.";
             }
 
-            // Cache the results for 1 hour to reduce API calls
+            // Cache the results for 4 hours to drastically reduce API calls
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
                 'data' => $this->mentions,
                 'users' => $this->users,
                 'timestamp' => $this->lastRefresh
-            ], 3600); // 1 hour cache
+            ], 14400); // 4 hour cache
 
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $statusCode = $e->getResponse()->getStatusCode();

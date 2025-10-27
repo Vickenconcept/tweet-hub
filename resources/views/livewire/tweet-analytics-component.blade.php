@@ -301,7 +301,7 @@
                                                          {{ $userName }}
                                                      </p>
                                                      <p class="text-sm text-gray-500 truncate">
-                                                         @{{ $userUsername }}
+                                                         <span>@</span>{{ $userUsername }}
                                                      </p>
                                                      @if($userMetrics)
                                                          <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">

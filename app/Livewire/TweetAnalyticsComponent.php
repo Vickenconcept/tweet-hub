@@ -130,11 +130,11 @@ class TweetAnalyticsComponent extends Component
                     ]);
                 }
                 
-                // Cache for 15 minutes
+                // Cache for 2 hours to reduce API calls
                 Cache::put($cacheKey, [
                     'data' => $result->data,
-                    'expires_at' => now()->addMinutes(15)
-                ], 900);
+                    'expires_at' => now()->addHours(2)
+                ], 7200);
                 
                 $this->successMessage = 'Recent tweets loaded successfully!';
             } else {
@@ -281,11 +281,11 @@ class TweetAnalyticsComponent extends Component
         if ($result && isset($result->data)) {
             $this->usersWhoLiked = $result->data;
             
-            // Cache for 10 minutes
+            // Cache for 1 hour to reduce API calls
             Cache::put($cacheKey, [
                 'data' => $result->data,
-                'expires_at' => now()->addMinutes(10)
-            ], 600);
+                'expires_at' => now()->addHour()
+            ], 3600);
         }
     }
 
@@ -306,11 +306,11 @@ class TweetAnalyticsComponent extends Component
         if ($result && isset($result->data)) {
             $this->quoteTweets = $result->data;
             
-            // Cache for 10 minutes
+            // Cache for 1 hour to reduce API calls
             Cache::put($cacheKey, [
                 'data' => $result->data,
-                'expires_at' => now()->addMinutes(10)
-            ], 600);
+                'expires_at' => now()->addHour()
+            ], 3600);
         }
     }
 
@@ -331,11 +331,11 @@ class TweetAnalyticsComponent extends Component
         if ($result && isset($result->data)) {
             $this->replies = $result->data;
             
-            // Cache for 10 minutes
+            // Cache for 1 hour to reduce API calls
             Cache::put($cacheKey, [
                 'data' => $result->data,
-                'expires_at' => now()->addMinutes(10)
-            ], 600);
+                'expires_at' => now()->addHour()
+            ], 3600);
         }
     }
 
@@ -356,11 +356,11 @@ class TweetAnalyticsComponent extends Component
         if ($result && isset($result->data)) {
             $this->likedTweets = $result->data;
             
-            // Cache for 15 minutes
-            Cache::put($cacheKey, [
-                'data' => $result->data,
-                'expires_at' => now()->addMinutes(15)
-            ], 900);
+                // Cache for 2 hours to reduce API calls
+                Cache::put($cacheKey, [
+                    'data' => $result->data,
+                    'expires_at' => now()->addHours(2)
+                ], 7200);
         }
     }
 

@@ -82,14 +82,37 @@ class TwitterService
                 }
                 
                 if ($statusCode === 429 && $retry < $maxRetries - 1) {
-                    // Exponential backoff with jitter to avoid thundering herd
-                    $waitTime = $baseDelay * pow(2, $retry) + rand(1, 5);
+                    // Try to get Retry-After header from response
+                    $retryAfter = null;
+                    try {
+                        $response = $e->getResponse();
+                        if ($response && $response->hasHeader('Retry-After')) {
+                            $retryAfter = (int) $response->getHeaderLine('Retry-After');
+                        } elseif ($response && $response->hasHeader('x-rate-limit-reset')) {
+                            // Fallback to rate limit reset time
+                            $resetTime = (int) $response->getHeaderLine('x-rate-limit-reset');
+                            $retryAfter = max(0, $resetTime - time());
+                        }
+                    } catch (\Exception $headerEx) {
+                        Log::warning('Could not read Retry-After header', ['error' => $headerEx->getMessage()]);
+                    }
+                    
+                    // Use Retry-After if available, otherwise use exponential backoff with jitter
+                    if ($retryAfter !== null && $retryAfter > 0) {
+                        $waitTime = min($retryAfter + rand(1, 5), 300); // Cap at 5 minutes, add jitter
+                        Log::info('Respecting Retry-After header', ['retry_after' => $retryAfter, 'wait_time' => $waitTime]);
+                    } else {
+                        // Exponential backoff with jitter to avoid thundering herd
+                        $waitTime = $baseDelay * pow(2, $retry) + rand(1, 5);
+                        Log::info('Using exponential backoff', ['wait_time' => $waitTime, 'retry' => $retry]);
+                    }
                     
                     if (config('twitter.logging.log_rate_limits', true)) {
                         Log::info('Rate limited, waiting before retry', [
                             'wait_time' => $waitTime, 
                             'retry' => $retry,
-                            'status_code' => $statusCode
+                            'status_code' => $statusCode,
+                            'retry_after_header' => $retryAfter
                         ]);
                     }
                     

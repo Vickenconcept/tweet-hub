@@ -127,7 +127,7 @@
                                 <div>
                                     <span class="font-semibold text-gray-900 text-md block">{{ $userName }}</span>
                                     @if($userUsername)
-                                        <span class="text-sm text-gray-500">@{{ $userUsername }}</span>
+                                        <span class="text-sm text-gray-500"><span>@</span>{{ $userUsername }}</span>
                                     @endif
                                     @if($followersCount > 0)
                                         <span class="text-xs text-gray-400 ml-2">• {{ number_format($followersCount) }} followers</span>
