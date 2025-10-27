@@ -75,4 +75,93 @@ class ChatGptService
 
         return null;
     }
+
+    /**
+     * Generate an image using DALL-E
+     */
+    public function generateImage($prompt, $size = '1024x1024', $style = 'natural')
+    {
+        $url = 'https://api.openai.com/v1/images/generations';
+        $maxRetries = 3;
+        $retryDelay = 5;
+
+        for ($examinedAttempt = 0; $examinedAttempt < $maxRetries; $examinedAttempt++) {
+            try {
+                $response = $this->httpClient->post($url, [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $this->apiKey,
+                        'Content-Type' => 'application/json',
+                    ],
+                    'json' => [
+                        'model' => 'dall-e-3',
+                        'prompt' => $prompt,
+                        'n' => 1,
+                        'size' => $size,
+                        'quality' => 'standard',
+                        'style' => $style,
+                    ],
+                    'timeout' => 120, // 2 minutes timeout for image generation
+                ]);
+
+                $body = json_decode($response->getBody(), true);
+                
+                if (isset($body['data'][0]['url'])) {
+                    Log::info('Image generated successfully', [
+                        'prompt' => $prompt,
+                        'url' => $body['data'][0]['url']
+                    ]);
+                    return $body['data'][0]['url'];
+                } else {
+                    Log::error('Unexpected response format from DALL-E API', ['response' => $body]);
+                    return null;
+                }
+            } catch (ClientException $e) {
+                $statusCode = $e->getResponse()->getStatusCode();
+                $errorBody = $e->getResponse()->getBody()->getContents();
+                
+                Log::error('DALL-E API error', [
+                    'status_code' => $statusCode,
+                    'error_body' => $errorBody,
+                    'attempt' => $examinedAttempt
+                ]);
+                
+                if ($statusCode === 429 && $examinedAttempt < $maxRetries - 1) {
+                    Log::info("Rate limit exceeded. Retrying in {$retryDelay} seconds.");
+                    sleep($retryDelay);
+                } else {
+                    // Parse error for user-friendly message
+                    $errorData = json_decode($errorBody, true);
+                    $errorMessage = 'Failed to generate image';
+                    
+                    if (isset($errorData['error'])) {
+                        $apiError = $errorData['error'];
+                        
+                        // Handle specific error types
+                        if (isset($apiError['code']) && $apiError['code'] === 'billing_hard_limit_reached') {
+                            $errorMessage = 'OpenAI billing limit reached. Please add credits to your OpenAI account or check your usage limits.';
+                        } elseif (isset($apiError['message'])) {
+                            $errorMessage = 'OpenAI API Error: ' . $apiError['message'];
+                        }
+                    } else {
+                        $errorMessage = 'Failed to generate image: ' . $errorBody;
+                    }
+                    
+                    throw new \Exception($errorMessage);
+                }
+            } catch (\Exception $e) {
+                Log::error('Image generation failed', [
+                    'error' => $e->getMessage(),
+                    'prompt' => $prompt
+                ]);
+                
+                if ($examinedAttempt < $maxRetries - 1) {
+                    sleep($retryDelay);
+                } else {
+                    throw $e;
+                }
+            }
+        }
+
+        return null;
+    }
 }

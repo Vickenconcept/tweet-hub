@@ -542,6 +542,14 @@ class KeywordMonitoringComponent extends Component
         return trim($query);
     }
 
+    public function updatedAdvancedSearch($value)
+    {
+        if (!$value) {
+            // Reset advanced search fields when toggling off
+            $this->resetAdvancedSearch();
+        }
+    }
+    
     public function toggleAdvancedSearch()
     {
         $this->advancedSearch = !$this->advancedSearch;

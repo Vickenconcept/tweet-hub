@@ -101,6 +101,71 @@ class CloudinaryService
     }
 
     /**
+     * Upload a file from file path (for AI generated images)
+     */
+    public function uploadFileFromPath($filePath, $filename = 'ai_generated.png')
+    {
+        try {
+            $fileInfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($fileInfo, $filePath);
+            finfo_close($fileInfo);
+            
+            // Determine resource type
+            $resourceType = 'image';
+            if (str_starts_with($mimeType, 'video/')) {
+                $resourceType = 'video';
+            } elseif (str_starts_with($mimeType, 'audio/')) {
+                $resourceType = 'audio';
+            }
+            
+            // Build upload options
+            $uploadOptions = [
+                'resource_type' => $resourceType,
+                'folder' => "digital_content/{$resourceType}",
+                'public_id' => pathinfo($filename, PATHINFO_FILENAME),
+                'use_filename' => false,
+                'unique_filename' => true,
+            ];
+            
+            // Add format and quality options for images
+            if ($resourceType === 'image') {
+                if (str_contains(strtolower($filename), '.gif') || $mimeType === 'image/gif') {
+                    $uploadOptions['format'] = 'gif';
+                } else {
+                    $uploadOptions['format'] = 'png';
+                    $uploadOptions['quality'] = 'auto';
+                }
+            }
+            
+            $cloudinaryResponse = $this->cloudinary->uploadApi()->upload($filePath, $uploadOptions);
+            
+            Log::info('File uploaded from path to Cloudinary successfully', [
+                'public_id' => $cloudinaryResponse['public_id'],
+                'secure_url' => $cloudinaryResponse['secure_url'],
+                'file_path' => $filePath
+            ]);
+            
+            $secureUrl = $cloudinaryResponse['secure_url'];
+            
+            return [
+                'file_path' => $secureUrl,
+                'file_type' => $resourceType,
+                'original_name' => $filename,
+                'mime_type' => $mimeType,
+                'size' => filesize($filePath),
+                'cloudinary_public_id' => $cloudinaryResponse['public_id'],
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('Cloudinary upload from path failed', [
+                'error' => $e->getMessage(),
+                'file_path' => $filePath
+            ]);
+            throw $e;
+        }
+    }
+    
+    /**
      * Get resource type based on file mime type
      */
     private function getResourceType($file)

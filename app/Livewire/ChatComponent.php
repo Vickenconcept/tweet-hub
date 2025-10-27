@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\On;
 use App\Services\TwitterService;
 use App\Services\CloudinaryService;
+use App\Services\ChatGptService;
 use App\Models\Asset;
 use Livewire\WithFileUploads;
 
@@ -31,6 +32,13 @@ class ChatComponent extends Component
     public $scheduledDateTime = '';
     public $scheduledPosts = [];
     public $sentPosts = [];
+    
+    // AI Image Generation
+    public $showImageGenerator = false;
+    public $aiImagePrompt = '';
+    public $generatingImage = false;
+    public $generatedImageUrl = '';
+    public $generatedImageCode = '';
 
     public function mount()
     {
@@ -865,6 +873,139 @@ class ChatComponent extends Component
                 'error' => $e->getMessage()
             ]);
             return null;
+        }
+    }
+
+    public function toggleImageGenerator()
+    {
+        $this->showImageGenerator = !$this->showImageGenerator;
+        if (!$this->showImageGenerator) {
+            // Reset when closing
+            $this->aiImagePrompt = '';
+            $this->generatedImageUrl = '';
+            $this->generatedImageCode = '';
+            $this->generatingImage = false;
+        }
+    }
+
+    public function generateAIImage()
+    {
+        $this->validate([
+            'aiImagePrompt' => 'required|string|min:10|max:4000'
+        ]);
+
+        $this->generatingImage = true;
+        $this->errorMessage = '';
+        $this->successMessage = '';
+
+        try {
+            $chatGptService = new ChatGptService();
+            $imageUrl = $chatGptService->generateImage($this->aiImagePrompt, '1024x1024', 'vivid');
+
+            if (!$imageUrl) {
+                $this->errorMessage = 'Failed to generate image. Please try again.';
+                $this->generatingImage = false;
+                return;
+            }
+
+            // Download the generated image and upload to Cloudinary
+            $this->generatedImageUrl = $imageUrl;
+            $this->saveGeneratedImageToAssets($imageUrl);
+
+        } catch (\Exception $e) {
+            Log::error('AI image generation failed', [
+                'error' => $e->getMessage(),
+                'prompt' => $this->aiImagePrompt
+            ]);
+            $this->errorMessage = 'Failed to generate image: ' . $e->getMessage();
+            $this->generatingImage = false;
+        }
+    }
+
+    private function saveGeneratedImageToAssets($imageUrl)
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                $this->errorMessage = 'You must be logged in.';
+                $this->generatingImage = false;
+                return;
+            }
+
+            // Download the image from OpenAI
+            $imageContent = file_get_contents($imageUrl);
+            if ($imageContent === false) {
+                throw new \Exception('Failed to download generated image');
+            }
+
+            // Create asset record
+            $code = uniqid();
+            
+            // Upload to Cloudinary
+            $cloudinaryService = new CloudinaryService();
+            
+            // Create a temporary file
+            $tempFile = tempnam(sys_get_temp_dir(), 'ai_image_') . '.png';
+            file_put_contents($tempFile, $imageContent);
+
+            // Upload to Cloudinary using file path method
+            $uploadResult = $cloudinaryService->uploadFileFromPath($tempFile, 'ai_generated_' . $code . '.png');
+
+            // Clean up temp file
+            if (file_exists($tempFile)) {
+                unlink($tempFile);
+            }
+            $asset = Asset::create([
+                'user_id' => $user->id,
+                'type' => 'image',
+                'path' => $uploadResult['file_path'],
+                'original_name' => 'ai_generated_' . $code . '.png',
+                'code' => $code,
+            ]);
+
+            // Store the code for later use
+            $this->generatedImageCode = $code;
+            
+            // Don't add to message automatically - let user decide
+            // Keep the modal open with the generated image displayed
+            // $this->successMessage = 'AI image generated and saved! Click "Use This Image" to add it to your post, or "Try Again" to generate another.';
+            
+            $this->dispatch('ai-image-generated', code: $code);
+
+            Log::info('AI image generated and saved', [
+                'code' => $code,
+                'cloudinary_url' => $uploadResult['file_path']
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to save generated image', [
+                'error' => $e->getMessage()
+            ]);
+            $this->errorMessage = 'Failed to save generated image: ' . $e->getMessage();
+        } finally {
+            $this->generatingImage = false;
+        }
+    }
+
+    public function useGeneratedImage()
+    {
+        if ($this->generatedImageCode) {
+            // Add the saved image to the message
+            $this->message = rtrim($this->message) . " [img:" . $this->generatedImageCode . "] ";
+            
+            // Close modal and reset
+            $this->showImageGenerator = false;
+            $this->aiImagePrompt = '';
+            $this->generatedImageUrl = '';
+            $this->generatedImageCode = '';
+            $this->successMessage = 'AI image added to your post!';
+            
+            $this->dispatch('update-alpine-message', ['message' => $this->message]);
+            
+            // Maintain thread mode if active
+            if ($this->threadStarted) {
+                $this->dispatch('thread-state-updated', ['threadStarted' => true]);
+            }
         }
     }
 

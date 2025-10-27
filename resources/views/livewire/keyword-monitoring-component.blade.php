@@ -30,15 +30,7 @@
 
     <!-- Keyword Management Section - Hidden when advanced search is enabled -->
     @if(!$advancedSearch)
-    <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200 transition-all duration-300 ease-in-out"
-         x-data="{ show: true }"
-         x-show="show"
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0 transform scale-95"
-         x-transition:enter-end="opacity-100 transform scale-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100 transform scale-100"
-         x-transition:leave-end="opacity-0 transform scale-95">
+    <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200">
         <div class="flex items-center mb-4">
             <div class="w-10 h-10 bg-gradient-to-r from-purple-100 to-purple-200 rounded-xl flex items-center justify-center mr-3">
                 <i class="bx bx-search text-xl text-purple-600"></i>
@@ -139,15 +131,7 @@
 
     <!-- Advanced Search Configuration Panel -->
     @if($advancedSearch)
-        <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200 transition-all duration-300 ease-in-out"
-             x-data="{ show: true }"
-             x-show="show"
-             x-transition:enter="transition ease-out duration-300"
-             x-transition:enter-start="opacity-0 transform scale-95"
-             x-transition:enter-end="opacity-100 transform scale-100"
-             x-transition:leave="transition ease-in duration-200"
-             x-transition:leave-start="opacity-100 transform scale-100"
-             x-transition:leave-end="opacity-0 transform scale-95">
+        <div class="mb-8 p-6 bg-white rounded-2xl shadow-2xl shadow-gray-200">
             <div class="flex items-center mb-6">
                 <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mr-3">
                     <i class="bx bx-search-alt-2 text-xl text-white"></i>

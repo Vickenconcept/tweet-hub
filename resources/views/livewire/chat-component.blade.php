@@ -160,6 +160,17 @@
                                     </svg>
                                 </div>
                     </button>
+                    
+                    <!-- AI Image Generation Button -->
+                    <button type="button"
+                        class="p-3 text-purple-600 bg-gradient-to-r from-purple-100 to-purple-200 hover:bg-purple-200 rounded-xl transition-colors cursor-pointer"
+                        @click="$wire.toggleImageGenerator()"
+                        title="Generate AI Image with DALL-E">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            stroke-width="1.5" stroke="currentColor" class="size-5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+                        </svg>
+                    </button>
 
                             
                     <template x-if="$wire.message && $wire.message.match(/\[(img|vid|gif):([a-zA-Z0-9]+)\]/)">
@@ -553,6 +564,127 @@
             </div>
         @endif
     </div>
+
+    <!-- AI Image Generation Modal -->
+    @if($showImageGenerator)
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click="$wire.toggleImageGenerator()">
+            <div class="bg-white rounded-2xl p-8 w-full max-w-lg mx-4 shadow-2xl" @click.stop>
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center mr-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-white">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-իմ846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-semibold text-gray-900">AI Image Generator</h3>
+                            <p class="text-sm text-gray-600">Powered by DALL-E 3</p>
+                        </div>
+                    </div>
+                    <button @click="$wire.toggleImageGenerator()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                @if($errorMessage && str_contains(strtolower($errorMessage), 'image'))
+                    <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                        <div class="flex items-start">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 text-red-600 mt-0.5 mr-2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                            </svg>
+                            <p class="text-sm text-red-800">{{ $errorMessage }}</p>
+                        </div>
+                    </div>
+                @endif
+
+                @if(!$generatingImage && !$generatedImageUrl)
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Describe the image you want to generate</label>
+                        <textarea wire:model="aiImagePrompt" 
+                                  rows="4"
+                                  placeholder="e.g., A futuristic city with flying cars at sunset, digital art style..."
+                                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-base resize-none"></textarea>
+                        <p class="text-xs text-gray-500 mt-2">
+                            <i class="bx bx-lightbulb mr-1"></i>
+                            <strong>Tip:</strong> Be specific and descriptive for best results. The more details you provide, the better the AI can create your image.
+                        </p>
+                    </div>
+                @endif
+
+                @if($generatingImage)
+                    <div class="py-12 text-center">
+                        <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mb-6"></div>
+                        <h4 class="text-xl font-semibold text-gray-900 mb-2">Generating Your Image...</h4>
+                        <p class="text-gray-600">This usually takes 10-30 seconds</p>
+                        <div class="mt-6 space-y-2">
+                            <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full animate-progress"></div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+
+                @if($generatedImageUrl && $generatedImageCode)
+                    <div class="mb-6">
+                        <h4 class="text-lg font-semibold text-gray-900 mb-3">Generated Image</h4>
+                        <div class="rounded-xl overflow-hidden border-2 border-purple-200 shadow-lg cursor-pointer transition-transform hover:scale-[1.02]"
+                             @click="$wire.useGeneratedImage()">
+                            <img src="{{ $generatedImageUrl }}" alt="Generated AI Image" class="w-full">
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2 text-center">
+                            <i class="bx bx-info-circle mr-1"></i>
+                            Click the image to add it to your post
+                        </p>
+                    </div>
+                @endif
+
+                <div class="flex gap-3 mt-6">
+                    @if(!$generatingImage && !$generatedImageUrl)
+                        <button wire:click="generateAIImage" 
+                                wire:loading.attr="disabled"
+                                :disabled="!$wire.aiImagePrompt || $wire.aiImagePrompt.length < 10"
+                                class="flex-1 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-medium rounded-xl hover:from-purple-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-lg">
+                            <span wire:loading.remove wire:target="generateAIImage">
+                                <i class="bx bx-sparkles mr-2"></i>
+                                Generate Image
+                            </span>
+                            <span wire:loading wire:target="generateAIImage">
+                                <svg class="animate-spin inline-block h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Generating...
+                            </span>
+                        </button>
+                    @endif
+                    
+                    @if($generatedImageUrl && $generatedImageCode)
+                        <button wire:click="useGeneratedImage" 
+                                wire:loading.attr="disabled"
+                                class="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-medium rounded-xl hover:from-green-600 hover:to-emerald-700 transition-colors cursor-pointer shadow-lg">
+                            <i class="bx bx-check mr-2"></i>
+                            Use This Image
+                        </button>
+                        <button wire:click="$set('generatedImageUrl', ''); $set('generatedImageCode', ''); $set('aiImagePrompt', '');" 
+                                wire:loading.attr="disabled"
+                                class="px-6 py-3 bg-gradient-to-r from-gray-400 to-gray-600 text-white font-medium rounded-xl hover:from-gray-500 hover:to-gray-700 transition-colors cursor-pointer">
+                            <i class="bx bx-refresh mr-2"></i>
+                            Try Again
+                        </button>
+                    @endif
+                    
+                    @if(!$generatingImage)
+                        <button @click="$wire.toggleImageGenerator()" 
+                                class="px-6 py-3 bg-gradient-to-r from-gray-400 to-gray-600 text-white font-medium rounded-xl hover:from-gray-500 hover:to-gray-700 transition-colors cursor-pointer">
+                            Cancel
+                        </button>
+                    @endif
+                </div>
+            </div>
+        </div>
+    @endif
 </div>
 
 <script>
