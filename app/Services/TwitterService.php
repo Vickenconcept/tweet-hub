@@ -10,10 +10,14 @@ use GuzzleHttp\Client as GuzzleClient;
 class TwitterService
 {
     protected $client;
+    protected $bearerToken;
+    protected $settings;
 
     public function __construct(array $settings)
     {
         $this->client = new Client($settings);
+        $this->settings = $settings;
+        $this->bearerToken = $settings['bearer_token'] ?? config('services.twitter.bearer_token');
     }
 
     // Tweets endpoints
@@ -23,7 +27,11 @@ class TwitterService
     public function getRecentMentionsFast($accountId)
     {
         try {
-            Log::info('Fetching mentions using fast search method', ['account_id' => $accountId]);
+            Log::info('🔴 API CALL: getRecentMentionsFast', [
+                'account_id' => $accountId,
+                'endpoint' => 'search/recent',
+                'timestamp' => now()->format('Y-m-d H:i:s')
+            ]);
             
             // Get user info first to get username
             $userInfo = $this->findUser($accountId, \Noweh\TwitterApi\UserLookup::MODES['ID']);
@@ -57,7 +65,12 @@ class TwitterService
         for ($retry = 0; $retry < $maxRetries; $retry++) {
             try {
                 if (config('twitter.logging.log_api_calls', true)) {
-                Log::info('Fetching recent mentions', ['account_id' => $accountId, 'retry' => $retry]);
+                    Log::info('🔴 API CALL: getRecentMentions', [
+                        'account_id' => $accountId,
+                        'endpoint' => 'timeline/mentions',
+                        'retry' => $retry,
+                        'timestamp' => now()->format('Y-m-d H:i:s')
+                    ]);
                 }
                 
                 $result = $this->client->timeline()->getRecentMentions($accountId)->performRequest();
@@ -214,6 +227,12 @@ class TwitterService
      */
     public function searchTweetsByKeyword($keyword, $pageSize = 10)
     {
+        Log::info('🔴 API CALL: searchTweetsByKeyword', [
+            'keyword' => $keyword,
+            'page_size' => $pageSize,
+            'timestamp' => now()->format('Y-m-d H:i:s')
+        ]);
+        
         // Clean and format the keyword for Twitter API
         $formattedKeyword = $this->formatKeywordForTwitter($keyword);
         
@@ -268,6 +287,13 @@ class TwitterService
     public function searchTweetsDirect($query, $pageSize = 10)
     {
         try {
+            Log::info('🔴 API CALL: searchTweetsDirect', [
+                'query' => $query,
+                'page_size' => $pageSize,
+                'endpoint' => 'search/recent',
+                'timestamp' => now()->format('Y-m-d H:i:s')
+            ]);
+            
             // Twitter API v2 search requires Bearer Token authentication
             $bearerToken = config('services.twitter.bearer_token');
             
@@ -1052,18 +1078,67 @@ class TwitterService
     public function likeTweet($tweetId)
     {
         try {
-            // Try the correct like endpoint structure - might need different parameters
+            Log::info('🔴 API CALL: likeTweet', [
+                'tweet_id' => $tweetId,
+                'settings_keys' => array_keys($this->settings),
+                'has_access_token' => !empty($this->settings['access_token']),
+                'timestamp' => now()->format('Y-m-d H:i:s')
+            ]);
+            
+            // Use the client instance (same as retweet and createTweet)
             return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetId]);
+            
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $response = $e->getResponse();
+            $statusCode = $response->getStatusCode();
+            $body = $response->getBody()->getContents();
+            
+            // Parse the JSON body to get the full error detail
+            $errorData = json_decode($body, true);
+            
+            Log::error('❌ likeTweet ClientException - Full Error Details', [
+                'tweet_id' => $tweetId,
+                'status_code' => $statusCode,
+                'error_body' => $body,
+                'error_detail' => $errorData['detail'] ?? null,
+                'error_title' => $errorData['title'] ?? null,
+                'error_type' => $errorData['type'] ?? null,
+                'settings_keys' => array_keys($this->settings),
+                'has_all_required' => !empty($this->settings['consumer_key']) && 
+                                       !empty($this->settings['consumer_secret']) && 
+                                       !empty($this->settings['access_token']) && 
+                                       !empty($this->settings['access_token_secret']),
+                'access_token_length' => strlen($this->settings['access_token'] ?? ''),
+                'access_token_secret_length' => strlen($this->settings['access_token_secret'] ?? '')
+            ]);
+            
+            $errorMessage = $body ?: $e->getMessage();
+            
         } catch (\Exception $e) {
-            // Check if it's the "Too Many Requests" error (429)
-            if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
-                strpos($e->getMessage(), 'Too Many Requests') !== false) {
-                // Return a user-friendly response for rate limiting
-                return (object) ['data' => ['liked' => false, 'message' => 'Rate limit exceeded. Please wait a moment before liking again.']];
+            Log::error('❌ likeTweet General Error', [
+                'tweet_id' => $tweetId,
+                'error' => $e->getMessage(),
+                'class' => get_class($e),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            $errorMessage = $e->getMessage();
+            
+            // Extract user-friendly error from response
+            $userMessage = "Failed to like tweet";
+            
+            if (strpos($errorMessage, '403 Forbidden') !== false) {
+                $userMessage = "Twitter API authentication error. Your account may need to be reconnected. Please check your Twitter connection in settings.";
+            } elseif (strpos($errorMessage, '429 Too Many Requests') !== false || strpos($errorMessage, 'Too Many Requests') !== false) {
+                $userMessage = 'Rate limit exceeded. Please wait a moment before liking again.';
+            } elseif (strpos($errorMessage, '401') !== false) {
+                $userMessage = "Twitter authentication failed. Please reconnect your Twitter account in settings.";
+            } elseif (strpos($errorMessage, '404') !== false) {
+                $userMessage = "Tweet not found. It may have been deleted.";
             }
             
-            // Re-throw other errors
-            throw $e;
+            // Return error instead of throwing
+            return (object) ['data' => ['liked' => false, 'message' => $userMessage], 'error' => $userMessage];
         }
     }
 
@@ -1517,5 +1592,86 @@ class TwitterService
     public function getCharacterCount($text)
     {
         return mb_strlen($text, 'UTF-8');
+    }
+
+    /**
+     * Stream tweets in real-time using Twitter Streaming API
+     * This is much more efficient than polling and doesn't count toward normal rate limits
+     */
+    public function streamMentions($username, callable $callback, $timeout = 30)
+    {
+        try {
+            if (empty($this->bearerToken)) {
+                throw new \Exception('Bearer token required for streaming');
+            }
+
+            $url = 'https://api.twitter.com/2/tweets/search/stream';
+            
+            // Build stream rules/rules
+            $params = [
+                'tweet.fields' => 'created_at,author_id,public_metrics',
+                'expansions' => 'author_id',
+                'user.fields' => 'name,username,profile_image_url'
+            ];
+
+            $streamUrl = $url . '?' . http_build_query($params);
+
+            Log::info('Starting Twitter stream', [
+                'url' => $streamUrl,
+                'timeout' => $timeout
+            ]);
+
+            // Create stream connection
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $streamUrl,
+                CURLOPT_RETURNTRANSFER => false,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $this->bearerToken,
+                    'Content-Type: application/json',
+                ],
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_FOLLOWLOCATION => true,
+            ]);
+
+            // Set up stream reading
+            $handle = fopen('php://temp', 'w+');
+            curl_setopt($ch, CURLOPT_FILE, $handle);
+            curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $data) use ($callback) {
+                // Twitter streams JSON lines - each line is a separate JSON object
+                $lines = explode("\n", $data);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if (empty($line)) continue;
+                    
+                    try {
+                        $tweet = json_decode($line, true);
+                        if ($tweet && isset($tweet['data'])) {
+                            $callback($tweet);
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to parse stream tweet', ['error' => $e->getMessage()]);
+                    }
+                }
+                return strlen($data);
+            });
+
+            $result = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+            if ($httpCode !== 200) {
+                $error = curl_error($ch);
+                Log::error('Stream error', ['http_code' => $httpCode, 'error' => $error]);
+                throw new \Exception("Stream failed: HTTP {$httpCode}");
+            }
+
+            curl_close($ch);
+            fclose($handle);
+
+        } catch (\Exception $e) {
+            Log::error('Twitter stream error', ['error' => $e->getMessage()]);
+            throw $e;
+        }
     }
 } 

@@ -35,7 +35,9 @@ class TweetAnalyticsComponent extends Component
 
     public function mount()
     {
-        $this->loadRecentTweets();
+        // Don't load immediately - let page load first, then it will auto-load after 3 seconds
+        // This prevents page delay when opening
+        Log::info('Tweet analytics page mounted - skipping immediate API call to prevent delay');
     }
 
     public function boot()
@@ -98,6 +100,11 @@ class TweetAnalyticsComponent extends Component
             $cachedData = Cache::get($cacheKey);
 
             if ($cachedData && $cachedData['expires_at'] > now()) {
+                Log::info('✅ CACHE HIT: Recent tweets loaded from cache (NO API CALL)', [
+                    'cache_key' => $cacheKey,
+                    'tweets_count' => count($cachedData['data'] ?? []),
+                    'timestamp' => now()->format('Y-m-d H:i:s')
+                ]);
                 $this->recentTweets = $cachedData['data'];
                 $this->loading = false;
                 return;
@@ -109,6 +116,12 @@ class TweetAnalyticsComponent extends Component
             Log::info('Loading recent tweets', [
                 'user_id' => $user->id,
                 'twitter_account_id' => $user->twitter_account_id
+            ]);
+            
+            Log::info('🔴 API CALL: getRecentTweets', [
+                'user_id' => $user->id,
+                'twitter_account_id' => $user->twitter_account_id,
+                'timestamp' => now()->format('Y-m-d H:i:s')
             ]);
             
             $result = $twitterService->getRecentTweets($user->twitter_account_id);

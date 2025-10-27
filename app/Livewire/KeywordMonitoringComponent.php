@@ -59,13 +59,13 @@ class KeywordMonitoringComponent extends Component
     {
         $this->loadKeywords();
         
-        // Load tweets directly if we have keywords (uses cache when available)
-        if (!empty($this->keywords) || $this->advancedSearch) {
-            $this->loadTweets();
-        } else {
-            $this->tweets = [];
-            $this->lastRefresh = now()->format('M j, Y g:i A');
-        }
+        // Don't load immediately - let page load first, then it will auto-load after 3 seconds
+        // This prevents page delay when opening
+        Log::info('Keyword page mounted - skipping immediate API call to prevent delay');
+        
+        // Initialize tweets array
+        $this->tweets = [];
+        $this->lastRefresh = now()->format('M j, Y g:i A');
     }
 
     public function loadKeywords()
@@ -180,7 +180,12 @@ class KeywordMonitoringComponent extends Component
             $cachedTweets = \Illuminate\Support\Facades\Cache::get($cacheKey);
             
             if ($cachedTweets) {
-                Log::info('Loading tweets from cache', ['cache_key' => $cacheKey, 'tweets_count' => count($cachedTweets['data'] ?? [])]);
+                Log::info('✅ CACHE HIT: Keywords loaded from cache (NO API CALL)', [
+                    'cache_key' => $cacheKey,
+                    'tweets_count' => count($cachedTweets['data'] ?? []),
+                    'last_updated' => $cachedTweets['timestamp'] ?? 'unknown',
+                    'timestamp' => now()->format('Y-m-d H:i:s')
+                ]);
                 $this->tweets = $cachedTweets['data'] ?? [];
                 $this->lastRefresh = $cachedTweets['timestamp'] ?? now()->format('M j, Y g:i A');
                 $this->currentPage = 1;
@@ -213,32 +218,47 @@ class KeywordMonitoringComponent extends Component
                 $allTweets = [];
                 $seenTweetIds = []; // To avoid duplicates
                 
-                foreach ($this->keywords as $keyword) {
-                Log::info('Searching for keyword', ['keyword' => $keyword]);
+                // IMPORTANT: Batch keywords to make ONE API call instead of multiple
+                // Use OR operator to search all keywords at once
+                $searchQuery = implode(' OR ', array_map(function($keyword) {
+                    // Format each keyword properly
+                    if (str_starts_with($keyword, '#')) {
+                        return $keyword; // Hashtag
+                    } elseif (str_starts_with($keyword, '@')) {
+                        return $keyword; // Mention
+                    } else {
+                        return '"' . $keyword . '"'; // Exact phrase
+                    }
+                }, $this->keywords));
                 
-                $searchResponse = $twitterService->searchTweetsByKeyword(
-                    $keyword, // single keyword with proper formatting
-                    $this->perPage * 3 // Get more results per keyword
+                Log::info('🔴 API CALL: Batch searching keywords (ONE CALL for all)', [
+                    'keywords_count' => count($this->keywords),
+                    'keywords' => $this->keywords,
+                    'batch_query' => $searchQuery,
+                    'timestamp' => now()->format('Y-m-d H:i:s')
+                ]);
+                
+                // Make ONE API call for all keywords
+                $searchResponse = $twitterService->searchTweetsDirect(
+                    $searchQuery,
+                    $this->perPage * count($this->keywords) // Scale results by keyword count
                 );
 
                 // Log the response for debugging
-                Log::info('Keyword Search API Response', [
-                    'keyword' => $keyword,
+                Log::info('Batch Keyword Search API Response', [
                     'response_type' => gettype($searchResponse),
-                    'response_content' => $searchResponse
+                    'has_data' => is_object($searchResponse) ? isset($searchResponse->data) : (is_array($searchResponse) ? isset($searchResponse['data']) : false)
                 ]);
 
-                // Handle different response structures and extract tweets
+                // Handle different response structures and extract tweets from batch search
                 $keywordTweets = [];
                 if (is_object($searchResponse)) {
                     if (isset($searchResponse->data)) {
                         $keywordTweets = is_array($searchResponse->data) ? $searchResponse->data : (array) $searchResponse->data;
                     } elseif (isset($searchResponse->errors)) {
-                        Log::warning('Twitter API returned errors for keyword', [
-                            'keyword' => $keyword,
+                        Log::warning('Twitter API returned errors for batch search', [
                             'errors' => $searchResponse->errors
                         ]);
-                        continue; // Skip this keyword but continue with others
                     }
                 } elseif (is_array($searchResponse)) {
                     if (isset($searchResponse['data'])) {
@@ -250,18 +270,10 @@ class KeywordMonitoringComponent extends Component
                 foreach ($keywordTweets as $tweet) {
                     $tweetId = is_object($tweet) ? $tweet->id : $tweet['id'];
                     if (!in_array($tweetId, $seenTweetIds)) {
-                        // Log tweet structure for debugging
-                        Log::info('Tweet structure', [
-                            'tweet_id' => $tweetId,
-                            'tweet_keys' => is_object($tweet) ? array_keys(get_object_vars($tweet)) : array_keys($tweet),
-                            'has_created_at' => is_object($tweet) ? isset($tweet->created_at) : isset($tweet['created_at']),
-                        ]);
-                        
                         $allTweets[] = $tweet;
                         $seenTweetIds[] = $tweetId;
                     }
                 }
-            }
 
             // Sort tweets by creation date (newest first)
             usort($allTweets, function($a, $b) {
@@ -641,10 +653,19 @@ class KeywordMonitoringComponent extends Component
             ];
 
             $twitterService = new TwitterService($settings);
+            
+            // Get tweet ID - handle both object and array formats
+            $tweetId = is_object($this->selectedTweet) ? $this->selectedTweet->id : $this->selectedTweet['id'];
+            
+            Log::info('🔴 UI ACTION: Sending reply from keyword page', [
+                'tweet_id' => $tweetId,
+                'reply_text' => $this->replyContent
+            ]);
+            
             $response = $twitterService->createTweet(
                 $this->replyContent, 
                 [], 
-                $this->selectedTweet->id
+                $tweetId
             );
             
             if ($response && isset($response->data)) {
@@ -665,6 +686,8 @@ class KeywordMonitoringComponent extends Component
     public function likeTweet($tweetId)
     {
         try {
+            Log::info('🔴 UI ACTION: Like tweet from keyword page', ['tweet_id' => $tweetId]);
+            
             $user = Auth::user();
             $settings = [
                 'account_id' => $user->twitter_account_id,
@@ -679,16 +702,23 @@ class KeywordMonitoringComponent extends Component
             $response = $twitterService->likeTweet($tweetId);
             
             if ($response) {
-                // Check if it's a rate limit message
-                if (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
-                    $this->errorMessage = $response->data->message;
-                    $this->dispatch('show-error', $response->data->message);
+                // Check if it's an error response
+                if (isset($response->error) || (isset($response->data->message) && strpos($response->data->message, 'Failed') !== false)) {
+                    $errorMsg = $response->error ?? $response->data->message ?? 'Failed to like tweet';
+                    Log::warning('⚠️ Like failed', ['tweet_id' => $tweetId, 'error' => $errorMsg]);
+                    $this->errorMessage = $errorMsg;
+                    $this->dispatch('show-error', $errorMsg);
                 } else {
+                    Log::info('✅ Like successful from keyword page', ['tweet_id' => $tweetId]);
                     $this->successMessage = 'Tweet liked successfully!';
                     $this->dispatch('show-success', 'Tweet liked successfully!');
                 }
             }
         } catch (\Exception $e) {
+            Log::error('❌ Failed to like tweet from keyword page', [
+                'tweet_id' => $tweetId,
+                'error' => $e->getMessage()
+            ]);
             $this->errorMessage = 'Failed to like tweet: ' . $e->getMessage();
         }
     }
@@ -696,6 +726,8 @@ class KeywordMonitoringComponent extends Component
     public function retweetTweet($tweetId)
     {
         try {
+            Log::info('🔴 UI ACTION: Retweet from keyword page', ['tweet_id' => $tweetId]);
+            
             $user = Auth::user();
             $settings = [
                 'account_id' => $user->twitter_account_id,

@@ -25,8 +25,9 @@ class TwitterMentionsComponent extends Component
 
     public function mount()
     {
-        // Load mentions directly from cache or API - no delays needed
-        $this->loadMentions();
+        // Don't load immediately - let page load first, then user can click to load
+        // This prevents page delay when opening
+        Log::info('Page mounted - skipping immediate API call to prevent delay');
     }
 
     public function loadMentions($forceRefresh = false)
@@ -65,18 +66,24 @@ class TwitterMentionsComponent extends Component
         $cachedMentions = \Illuminate\Support\Facades\Cache::get($cacheKey);
         
         if ($cachedMentions) {
-                \Log::info('Loading mentions from cache', ['cache_key' => $cacheKey, 'mentions_count' => count($cachedMentions['data'] ?? [])]);
+                \Log::info('✅ CACHE HIT: Mentions loaded from cache (NO API CALL)', [
+                    'cache_key' => $cacheKey,
+                    'mentions_count' => count($cachedMentions['data'] ?? []),
+                    'last_updated' => $cachedMentions['timestamp'] ?? 'unknown',
+                    'timestamp' => now()->format('Y-m-d H:i:s')
+                ]);
             $this->mentions = $cachedMentions['data'] ?? [];
             $this->users = $cachedMentions['users'] ?? [];
             $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
             $this->currentPage = 1; // Reset to first page when loading from cache
                 $this->successMessage = 'Mentions loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Sync for fresh data.';
+                // $this->successMessage = 'Mentions loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Sync for fresh data.';
             $this->loading = false;
             $this->isLoading = false;
             return;
             }
         } else {
-            \Log::info('Force refresh requested - bypassing cache');
+            \Log::info('⚠️ FORCE REFRESH: Bypassing cache - this will make API calls');
         }
 
         try {
@@ -239,6 +246,8 @@ class TwitterMentionsComponent extends Component
     public function likeMention($mentionId)
     {
         try {
+            Log::info('🔴 UI ACTION: Like mention', ['mention_id' => $mentionId]);
+            
             $settings = [
                 'account_id' => Auth::user()->twitter_account_id,
                 'access_token' => Auth::user()->twitter_access_token,
@@ -252,18 +261,24 @@ class TwitterMentionsComponent extends Component
             $response = $twitterService->likeTweet($mentionId);
             
             if ($response) {
+                Log::info('✅ Like successful', ['mention_id' => $mentionId, 'response' => $response]);
+                
                 // Check if it's a rate limit message
                 if (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
                     $this->errorMessage = $response->data->message;
                     $this->dispatch('show-error', $response->data->message);
                 } else {
-                $this->successMessage = 'Tweet liked successfully!';
-                $this->dispatch('show-success', 'Tweet liked successfully!');
+                    $this->successMessage = 'Tweet liked successfully!';
+                    $this->dispatch('show-success', 'Tweet liked successfully!');
                 }
                 // Clear cache to show updated data
                 $this->clearMentionsCache();
             }
         } catch (\Exception $e) {
+            Log::error('❌ Failed to like mention', [
+                'mention_id' => $mentionId,
+                'error' => $e->getMessage()
+            ]);
             $this->errorMessage = 'Failed to like tweet: ' . $e->getMessage();
         }
     }

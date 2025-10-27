@@ -161,8 +161,51 @@
                                         <p class="text-xs text-green-300 font-medium">Connected</p>
                                     </div>
                                 </div>
+                                <!-- Disconnect Button -->
+                                <button onclick="disconnectTwitter(); event.stopPropagation();" 
+                                        class="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors flex-shrink-0" 
+                                        title="Disconnect Twitter">
+                                    <i class='bx bx-log-out text-xl'></i>
+                                </button>
                             </div>
                         </div>
+                        
+                        <!-- Disconnect Confirmation Modal -->
+                        <div id="disconnectModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center" style="display: none;">
+                            <div class="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4 border border-gray-700">
+                                <div class="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-red-900/20 rounded-full">
+                                    <i class='bx bx-log-out text-red-400 text-2xl'></i>
+                                </div>
+                                <h3 class="text-xl font-bold text-white text-center mb-2">Disconnect Twitter?</h3>
+                                <p class="text-gray-400 text-center mb-6">
+                                    This will remove your Twitter connection and you'll need to reconnect to use Twitter features.
+                                </p>
+                                <div class="flex gap-3">
+                                    <button onclick="closeDisconnectModal()" 
+                                            class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors">
+                                        Cancel
+                                    </button>
+                                    <form action="{{ route('twitter.disconnect') }}" method="POST" class="flex-1">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" 
+                                                class="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors">
+                                            Disconnect
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <script>
+                            function disconnectTwitter() {
+                                document.getElementById('disconnectModal').style.display = 'flex';
+                            }
+                            
+                            function closeDisconnectModal() {
+                                document.getElementById('disconnectModal').style.display = 'none';
+                            }
+                        </script>
                     @elseif(auth()->user()->twitter_account_connected)
                         <!-- Twitter Connected but Profile Loading -->
                         <div class=" py-3">

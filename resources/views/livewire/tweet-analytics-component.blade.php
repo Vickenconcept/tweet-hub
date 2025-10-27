@@ -1,4 +1,4 @@
-<div>
+<div x-data="{ init() { setTimeout(() => $wire.loadRecentTweets(), 3000); } }">
     <div class="space-y-6">
         <!-- Header -->
         <div class="flex items-center justify-between">

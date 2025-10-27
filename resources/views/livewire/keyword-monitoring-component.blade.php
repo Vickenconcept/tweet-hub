@@ -1,4 +1,4 @@
-<div class="">
+<div class="" x-data="{ init() { setTimeout(() => { if ($wire.keywords.length > 0 || $wire.advancedSearch) { $wire.loadTweets(false); } }, 3000); } }">
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-900">
             {{ $advancedSearch ? 'Advanced Search' : 'Keyword Monitoring' }}

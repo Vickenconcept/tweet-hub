@@ -60,5 +60,8 @@ Route::middleware(['auth'])->group(function () {
 
 });
 
-Route::get('/connect/twitter', [TwitterAuthController::class, 'redirectToTwitter'])->name('twitter.connect');
-Route::get('/connect/twitter/callback', [TwitterAuthController::class, 'handleTwitterCallback'])->name('twitter.callback');
+Route::middleware('auth')->group(function () {
+    Route::get('/connect/twitter', [TwitterAuthController::class, 'redirectToTwitter'])->name('twitter.connect');
+    Route::get('/connect/twitter/callback', [TwitterAuthController::class, 'handleTwitterCallback'])->name('twitter.callback');
+    Route::delete('/disconnect/twitter', [TwitterAuthController::class, 'disconnectTwitter'])->name('twitter.disconnect');
+});

@@ -127,4 +127,31 @@ class TwitterAuthController extends Controller
             Log::error('Failed to fetch profile data using v2 API', ['error' => $e->getMessage()]);
         }
     }
+
+    public function disconnectTwitter(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        
+        if (!$user) {
+            return redirect('/login')->with('error', 'You must be logged in to disconnect your Twitter account.');
+        }
+
+        Log::info('Disconnecting Twitter account', ['user_id' => $user->id, 'username' => $user->twitter_username]);
+        
+        // Clear all Twitter-related fields
+        $user->twitter_account_connected = false;
+        $user->twitter_account_id = null;
+        $user->twitter_access_token = null;
+        $user->twitter_access_token_secret = null;
+        $user->twitter_refresh_token = null;
+        $user->twitter_username = null;
+        $user->twitter_name = null;
+        $user->twitter_profile_image_url = null;
+        $user->save();
+
+        Log::info('Twitter account disconnected successfully', ['user_id' => $user->id]);
+        
+        return redirect()->back()->with('success', 'Twitter account disconnected successfully. You can reconnect anytime.');
+    }
 }
