@@ -97,16 +97,34 @@
                     <h3 class="text-xl font-semibold text-gray-900">Edit Queued Post</h3>
                 </div>
                 
+                @if($errorMessage)
+                    <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-xl text-sm">
+                        {{ $errorMessage }}
+                    </div>
+                @endif
+                
+                @error('editContent')
+                    <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-xl text-sm">
+                        {{ $message }}
+                    </div>
+                @enderror
+                
                 <div class="mb-6">
                     <label for="editContent" class="block text-sm font-medium text-gray-700 mb-3">Content</label>
                     <textarea wire:model="editContent" id="editContent" rows="4"
-                              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"></textarea>
+                              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg @error('editContent') border-red-500 @enderror"></textarea>
                 </div>
+
+                @error('editScheduledAt')
+                    <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-xl text-sm">
+                        {{ $message }}
+                    </div>
+                @enderror
 
                 <div class="mb-8">
                     <label for="editScheduledAt" class="block text-sm font-medium text-gray-700 mb-3">Schedule Time</label>
                     <input wire:model="editScheduledAt" type="datetime-local" id="editScheduledAt"
-                           class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg">
+                           class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg @error('editScheduledAt') border-red-500 @enderror">
                 </div>
 
                 <div class="flex gap-4">

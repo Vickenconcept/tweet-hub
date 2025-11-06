@@ -5,6 +5,7 @@ namespace App\Livewire;
 use Livewire\Component;
 use App\Models\Post;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\On;
 
 class QueuedPostsComponent extends Component
@@ -60,10 +61,28 @@ class QueuedPostsComponent extends Component
         $this->validate([
             'editContent' => 'required|min:1|max:280',
             'editScheduledAt' => 'required|date|after:now',
+        ], [
+            'editContent.required' => 'Content is required.',
+            'editContent.min' => 'Content must be at least 1 character.',
+            'editContent.max' => 'Content cannot exceed 280 characters.',
+            'editScheduledAt.required' => 'Schedule time is required.',
+            'editScheduledAt.date' => 'Please enter a valid date and time.',
+            'editScheduledAt.after' => 'Schedule time must be in the future.',
         ]);
 
-        if ($this->selectedPost) {
-            $this->selectedPost->update([
+        try {
+            // Refresh the post to ensure we have the latest version
+            $post = Post::where('id', $this->selectedPost->id)
+                ->where('user_id', Auth::id())
+                ->where('status', 'scheduled')
+                ->first();
+
+            if (!$post) {
+                $this->errorMessage = 'Post not found or you do not have permission to edit it.';
+                return;
+            }
+
+            $post->update([
                 'content' => $this->editContent,
                 'scheduled_at' => $this->editScheduledAt,
             ]);
@@ -72,8 +91,16 @@ class QueuedPostsComponent extends Component
             $this->selectedPost = null;
             $this->editContent = '';
             $this->editScheduledAt = '';
+            $this->errorMessage = '';
             $this->successMessage = 'Post updated successfully!';
             $this->loadQueuedPosts();
+        } catch (\Exception $e) {
+            $this->errorMessage = 'Failed to update post: ' . $e->getMessage();
+            Log::error('Failed to update queued post', [
+                'post_id' => $this->selectedPost->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
     }
 
