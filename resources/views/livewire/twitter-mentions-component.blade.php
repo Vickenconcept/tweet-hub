@@ -5,18 +5,29 @@
             @if($lastRefresh)
                 <span class="text-sm text-gray-500">Last updated: {{ $lastRefresh }}</span>
             @endif
-            <button wire:click="loadMentions" 
+            @if($isRateLimited)
+                <span class="text-sm text-orange-600 font-medium">
+                    Rate Limited - Wait {{ $rateLimitWaitMinutes }} min(s) | Resets: {{ $rateLimitResetTime }}
+                </span>
+            @endif
+            <button type="button"
+                    wire:click="refreshMentions" 
                     wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
-                <i class="bx bx-data mr-1"></i>
-                <span wire:loading.remove wire:target="loadMentions">Load from Cache</span>
-                <span wire:loading wire:target="loadMentions">Loading...</span>
-            </button>
-            <button wire:click="refreshMentions" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-green-600 bg-gradient-to-r from-green-100 to-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer">
+                    @if($isRateLimited) disabled style="pointer-events: none;" @endif
+                    class="px-4 py-2 text-sm font-medium rounded-xl transition-colors
+                           @if($isRateLimited)
+                               text-gray-400 bg-gray-100 cursor-not-allowed opacity-50
+                           @else
+                               text-green-600 bg-gradient-to-r from-green-100 to-green-200 hover:bg-green-200 cursor-pointer
+                           @endif">
                 <i class="bx bx-sync mr-1"></i>
-                <span wire:loading.remove wire:target="refreshMentions">Sync Fresh Data</span>
+                <span wire:loading.remove wire:target="refreshMentions">
+                    @if($isRateLimited)
+                        Rate Limited
+                    @else
+                        Sync Fresh Data
+                    @endif
+                </span>
                 <span wire:loading wire:target="refreshMentions">Syncing...</span>
             </button>
 

@@ -22,16 +22,69 @@ class TwitterMentionsComponent extends Component
     public $currentPage = 1;
     public $perPage = 5;
     private $isLoading = false; // Prevent concurrent loads
+    public $isRateLimited = false;
+    public $rateLimitResetTime = '';
+    public $rateLimitWaitMinutes = 0;
 
     public function mount()
     {
         // Don't load immediately - let page load first, then user can click to load
         // This prevents page delay when opening
         Log::info('Page mounted - skipping immediate API call to prevent delay');
+        
+        // Check rate limit status on mount
+        $this->checkRateLimitStatus();
+    }
+    
+    public function checkRateLimitStatus()
+    {
+        $user = Auth::user();
+        if ($user) {
+            $settings = [
+                'account_id' => $user->twitter_account_id,
+                'access_token' => $user->twitter_access_token,
+                'access_token_secret' => $user->twitter_access_token_secret,
+                'consumer_key' => config('services.twitter.api_key'),
+                'consumer_secret' => config('services.twitter.api_key_secret'),
+                'bearer_token' => config('services.twitter.bearer_token'),
+            ];
+            
+            $twitterService = new TwitterService($settings);
+            $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+            
+            Log::info('🔍 Rate limit status check', [
+                'rate_limited' => $rateLimitCheck['rate_limited'] ?? false,
+                'reset_time' => $rateLimitCheck['reset_time'] ?? 'none',
+                'wait_minutes' => $rateLimitCheck['wait_minutes'] ?? 0
+            ]);
+            
+            if ($rateLimitCheck['rate_limited']) {
+                $this->isRateLimited = true;
+                $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
+                $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                Log::warning('🚫 Rate limit ACTIVE - UI updated', [
+                    'reset_time' => $this->rateLimitResetTime,
+                    'wait_minutes' => $this->rateLimitWaitMinutes
+                ]);
+            } else {
+                $this->isRateLimited = false;
+                $this->rateLimitResetTime = '';
+                $this->rateLimitWaitMinutes = 0;
+            }
+        }
     }
 
     public function loadMentions($forceRefresh = false)
     {
+        // Always check rate limit status before making API calls
+        $this->checkRateLimitStatus();
+        
+        // If rate limited, only allow cache load, not API calls
+        if ($this->isRateLimited && $forceRefresh) {
+            $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+            return;
+        }
+        
         // Prevent concurrent loads
         if ($this->isLoading) {
             Log::info('Load already in progress, skipping duplicate request');
@@ -63,27 +116,44 @@ class TwitterMentionsComponent extends Component
 
         // Check cache first (only if not forcing refresh)
         if (!$forceRefresh) {
-        $cachedMentions = \Illuminate\Support\Facades\Cache::get($cacheKey);
-        
-        if ($cachedMentions) {
-                \Log::info('✅ CACHE HIT: Mentions loaded from cache (NO API CALL)', [
+            $cachedMentions = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            
+            if ($cachedMentions) {
+                Log::info('✅ CACHE HIT: Mentions loaded from cache (NO API CALL)', [
                     'cache_key' => $cacheKey,
                     'mentions_count' => count($cachedMentions['data'] ?? []),
                     'last_updated' => $cachedMentions['timestamp'] ?? 'unknown',
                     'timestamp' => now()->format('Y-m-d H:i:s')
                 ]);
-            $this->mentions = $cachedMentions['data'] ?? [];
-            $this->users = $cachedMentions['users'] ?? [];
-            $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
-            $this->currentPage = 1; // Reset to first page when loading from cache
+                $this->mentions = $cachedMentions['data'] ?? [];
+                $this->users = $cachedMentions['users'] ?? [];
+                $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
+                $this->currentPage = 1; // Reset to first page when loading from cache
                 $this->successMessage = 'Mentions loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Sync for fresh data.';
-                // $this->successMessage = 'Mentions loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Sync for fresh data.';
-            $this->loading = false;
-            $this->isLoading = false;
-            return;
+                $this->loading = false;
+                $this->isLoading = false;
+                return;
+            }
+            
+            // If no cache and rate limited, don't make API call
+            if ($this->isRateLimited) {
+                Log::warning('🚫 Rate limited - skipping API call, no cache available');
+                $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s). Reset time: {$this->rateLimitResetTime}";
+                $this->loading = false;
+                $this->isLoading = false;
+                return;
             }
         } else {
-            \Log::info('⚠️ FORCE REFRESH: Bypassing cache - this will make API calls');
+            Log::info('⚠️ FORCE REFRESH: Bypassing cache - this will make API calls');
+            
+            // If forcing refresh but rate limited, don't make API call
+            if ($this->isRateLimited) {
+                Log::warning('🚫 Rate limited - cannot force refresh');
+                $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+                $this->loading = false;
+                $this->isLoading = false;
+                return;
+            }
         }
 
         try {
@@ -147,7 +217,7 @@ class TwitterMentionsComponent extends Component
             $this->currentPage = 1; // Reset to first page when new mentions are loaded
 
             $mentionsCount = count($this->mentions);
-            \Log::info('Fresh mentions loaded from Twitter API', ['mentions_count' => $mentionsCount, 'force_refresh' => $forceRefresh]);
+            Log::info('Fresh mentions loaded from Twitter API', ['mentions_count' => $mentionsCount, 'force_refresh' => $forceRefresh]);
             
             if ($mentionsCount > 0) {
                 $this->successMessage = "Mentions loaded successfully! Found {$mentionsCount} fresh mentions.";
@@ -163,24 +233,151 @@ class TwitterMentionsComponent extends Component
             ], 14400); // 4 hour cache
 
         } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
+            $response = $e->getResponse();
+            $statusCode = $response->getStatusCode();
+            $responseBody = $response->getBody()->getContents();
+            
+            // Extract rate limit headers directly from response
+            $rateLimitReset = null;
+            try {
+                if ($response->hasHeader('x-rate-limit-reset')) {
+                    $rateLimitReset = (int) $response->getHeaderLine('x-rate-limit-reset');
+                }
+            } catch (\Exception $headerEx) {
+                Log::warning('Could not read rate limit reset header', ['error' => $headerEx->getMessage()]);
+            }
+            
+            Log::error('Twitter API Client Error - Mentions', [
+                'status_code' => $statusCode,
+                'rate_limit_reset' => $rateLimitReset ? date('Y-m-d H:i:s', $rateLimitReset) : null,
+                'response_body' => $responseBody
+            ]);
             
             if ($statusCode === 429) {
-                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+                // Update rate limit status immediately from response headers
+                if ($rateLimitReset) {
+                    $waitMinutes = ceil(($rateLimitReset - time()) / 60);
+                    $resetDateTime = date('Y-m-d H:i:s', $rateLimitReset);
+                    
+                    $this->isRateLimited = true;
+                    $this->rateLimitResetTime = $resetDateTime;
+                    $this->rateLimitWaitMinutes = $waitMinutes;
+                    $this->errorMessage = "Rate limit exceeded. Please wait {$waitMinutes} minute(s) before trying again. Reset time: {$resetDateTime}";
+                    
+                    Log::warning('🚫 Rate limit detected from 429 response', [
+                        'reset_time' => $resetDateTime,
+                        'wait_minutes' => $waitMinutes
+                    ]);
+                } else {
+                    // Fallback: check cache (TwitterService should have stored it)
+                    $this->checkRateLimitStatus();
+                    if ($this->isRateLimited) {
+                        $this->errorMessage = "Rate limit exceeded. Please wait {$this->rateLimitWaitMinutes} minute(s) before trying again. Reset time: {$this->rateLimitResetTime}";
+                    } else {
+                        $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+                    }
+                }
             } elseif ($statusCode === 401) {
                 $this->errorMessage = 'Authentication failed. Please check your Twitter connection.';
             } elseif ($statusCode === 403) {
                 $this->errorMessage = 'Access forbidden. You may not have permission to access this data.';
             } else {
-                $this->errorMessage = "Failed to load mentions: HTTP {$statusCode}";
+                $this->errorMessage = "Failed to load mentions: HTTP {$statusCode}. Please try again later.";
             }
         } catch (\Exception $e) {
+            Log::error('Unexpected error loading mentions', [
+                'error' => $e->getMessage(),
+                'class' => get_class($e)
+            ]);
+            
             // Check if error message contains rate limit info
-            if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
-                strpos($e->getMessage(), 'Rate limit') !== false) {
-                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+            $errorMessage = $e->getMessage();
+            if (strpos($errorMessage, '429 Too Many Requests') !== false || 
+                strpos($errorMessage, 'Rate limit') !== false ||
+                strpos($errorMessage, 'Rate limit active') !== false) {
+                
+                // First, try to extract reset time from error message (TwitterService includes it)
+                $resetTimeFromMessage = null;
+                if (preg_match('/Reset time: ([^\.]+)/', $errorMessage, $matches)) {
+                    $resetTimeFromMessage = trim($matches[1]);
+                }
+                
+                // Check rate limit info from cache (TwitterService should have stored it)
+                $user = Auth::user();
+                if ($user) {
+                    $settings = [
+                        'account_id' => $user->twitter_account_id,
+                        'access_token' => $user->twitter_access_token,
+                        'access_token_secret' => $user->twitter_access_token_secret,
+                        'consumer_key' => config('services.twitter.api_key'),
+                        'consumer_secret' => config('services.twitter.api_key_secret'),
+                        'bearer_token' => config('services.twitter.bearer_token'),
+                    ];
+                    
+                    $twitterService = new TwitterService($settings);
+                    $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+                    
+                    if ($rateLimitCheck['rate_limited']) {
+                        // Use cache data (most reliable)
+                        $this->isRateLimited = true;
+                        $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
+                        $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                        $this->errorMessage = "Rate limit exceeded. Please wait {$rateLimitCheck['wait_minutes']} minute(s) before trying again. Reset time: {$rateLimitCheck['reset_time']}";
+                        
+                        Log::warning('🚫 Rate limit detected from cache after exception', [
+                            'reset_time' => $rateLimitCheck['reset_time'],
+                            'wait_minutes' => $rateLimitCheck['wait_minutes']
+                        ]);
+                    } elseif ($resetTimeFromMessage) {
+                        // Fallback: use reset time from exception message
+                        $this->isRateLimited = true;
+                        $this->rateLimitResetTime = $resetTimeFromMessage;
+                        // Calculate wait minutes from reset time string
+                        try {
+                            $resetTimestamp = strtotime($resetTimeFromMessage);
+                            if ($resetTimestamp) {
+                                $this->rateLimitWaitMinutes = ceil(($resetTimestamp - time()) / 60);
+                            }
+                        } catch (\Exception $timeEx) {
+                            $this->rateLimitWaitMinutes = 15; // Default fallback
+                        }
+                        $this->errorMessage = "Rate limit exceeded. Reset time: {$resetTimeFromMessage}. Please wait before trying again.";
+                        
+                        Log::warning('🚫 Rate limit detected from exception message', [
+                            'reset_time' => $resetTimeFromMessage
+                        ]);
+                    } else {
+                        // Generic rate limit message
+                        $this->isRateLimited = true;
+                        $this->rateLimitWaitMinutes = 15; // Default fallback
+                        $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+                    }
+                } else {
+                    $this->isRateLimited = true;
+                    $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+                }
             } else {
-                $this->errorMessage = 'Failed to load mentions: ' . $e->getMessage();
+                // Clean up error message - remove URLs and technical details
+                $cleanMessage = $errorMessage;
+                
+                // Remove full URLs
+                $cleanMessage = preg_replace('/https?:\/\/[^\s]+/', '', $cleanMessage);
+                
+                // Remove "Client error:" prefix
+                $cleanMessage = preg_replace('/Client error:\s*/i', '', $cleanMessage);
+                
+                // Remove "resulted in a" pattern
+                $cleanMessage = preg_replace('/resulted in a\s+\d+\s+\w+\s+response:.*$/i', '', $cleanMessage);
+                
+                // Trim and clean up
+                $cleanMessage = trim($cleanMessage);
+                
+                // If message is still too technical or empty, use generic message
+                if (empty($cleanMessage) || strlen($cleanMessage) > 200 || strpos($cleanMessage, 'GET https://') !== false) {
+                    $this->errorMessage = 'Failed to load mentions. Please try again later or contact support if the problem persists.';
+                } else {
+                    $this->errorMessage = 'Failed to load mentions: ' . $cleanMessage;
+                }
             }
         }
 
@@ -335,11 +532,19 @@ class TwitterMentionsComponent extends Component
 
     public function refreshMentions()
     {
+        // Check rate limit before making request
+        $this->checkRateLimitStatus();
+        
+        if ($this->isRateLimited) {
+            $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+            return;
+        }
+        
         // Clear only this user's cache to ensure fresh data
         $this->clearMentionsCache();
         
         // Add some debugging info
-        \Log::info('Refreshing mentions - user cache cleared, forcing fresh data fetch with fast method');
+        Log::info('Refreshing mentions - user cache cleared, forcing fresh data fetch with fast method');
         
         // Then load fresh mentions with force refresh
         $this->loadMentions(true);
@@ -373,7 +578,7 @@ class TwitterMentionsComponent extends Component
             
             // Check if cache exists before clearing
             $cachedData = \Illuminate\Support\Facades\Cache::get($cacheKey);
-            \Log::info('Before cache clear - cache exists', [
+            Log::info('Before cache clear - cache exists', [
                 'user_id' => $userId, 
                 'cache_key' => $cacheKey, 
                 'has_data' => !empty($cachedData)
@@ -393,7 +598,7 @@ class TwitterMentionsComponent extends Component
                 if ($cleared) $clearedCount++;
             }
             
-            \Log::info('Cache clear result', [
+            Log::info('Cache clear result', [
                 'user_id' => $userId,
                 'keys_attempted' => count($userSpecificKeys),
                 'keys_cleared' => $clearedCount
@@ -410,12 +615,12 @@ class TwitterMentionsComponent extends Component
                     })
                     ->delete();
                     
-                \Log::info('Cleared cache from database table', [
+                Log::info('Cleared cache from database table', [
                     'user_id' => $userId,
                     'deleted_rows' => $deletedRows
                 ]);
             } catch (\Exception $e) {
-                \Log::warning('Could not clear cache from database table', [
+                Log::warning('Could not clear cache from database table', [
                     'user_id' => $userId,
                     'error' => $e->getMessage()
                 ]);
@@ -423,7 +628,7 @@ class TwitterMentionsComponent extends Component
             
             // Verify cache is actually cleared for this user only
             $cachedDataAfter = \Illuminate\Support\Facades\Cache::get($cacheKey);
-            \Log::info('After cache clear - cache exists', [
+            Log::info('After cache clear - cache exists', [
                 'user_id' => $userId,
                 'cache_key' => $cacheKey, 
                 'has_data' => !empty($cachedDataAfter)
@@ -470,7 +675,7 @@ class TwitterMentionsComponent extends Component
                 if ($cleared) $clearedCount++;
             }
             
-            \Log::info('Cleared all user cache', [
+            Log::info('Cleared all user cache', [
                 'user_id' => $userId,
                 'keys_attempted' => count($allUserCacheKeys),
                 'keys_cleared' => $clearedCount
@@ -482,12 +687,12 @@ class TwitterMentionsComponent extends Component
                     ->where('key', 'like', "%{$userId}%")
                     ->delete();
                     
-                \Log::info('Cleared all user cache from database', [
+                Log::info('Cleared all user cache from database', [
                     'user_id' => $userId,
                     'deleted_rows' => $deletedRows
                 ]);
             } catch (\Exception $e) {
-                \Log::warning('Could not clear all user cache from database', [
+                Log::warning('Could not clear all user cache from database', [
                     'user_id' => $userId,
                     'error' => $e->getMessage()
                 ]);

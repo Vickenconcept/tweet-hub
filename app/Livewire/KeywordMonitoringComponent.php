@@ -24,6 +24,9 @@ class KeywordMonitoringComponent extends Component
     public $perPage = 10;
     public $searchLoading = false;
     private $isLoading = false; // Prevent concurrent loads
+    public $isRateLimited = false;
+    public $rateLimitResetTime = '';
+    public $rateLimitWaitMinutes = 0;
     
     // Advanced Search Properties
     public $advancedSearch = false;
@@ -63,9 +66,40 @@ class KeywordMonitoringComponent extends Component
         // This prevents page delay when opening
         Log::info('Keyword page mounted - skipping immediate API call to prevent delay');
         
+        // Check rate limit status on mount
+        $this->checkRateLimitStatus();
+        
         // Initialize tweets array
         $this->tweets = [];
         $this->lastRefresh = now()->format('M j, Y g:i A');
+    }
+    
+    public function checkRateLimitStatus()
+    {
+        $user = Auth::user();
+        if ($user) {
+            $settings = [
+                'account_id' => $user->twitter_account_id,
+                'access_token' => $user->twitter_access_token,
+                'access_token_secret' => $user->twitter_access_token_secret,
+                'consumer_key' => config('services.twitter.api_key'),
+                'consumer_secret' => config('services.twitter.api_key_secret'),
+                'bearer_token' => config('services.twitter.bearer_token'),
+            ];
+            
+            $twitterService = new TwitterService($settings);
+            $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+            
+            if ($rateLimitCheck['rate_limited']) {
+                $this->isRateLimited = true;
+                $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
+                $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+            } else {
+                $this->isRateLimited = false;
+                $this->rateLimitResetTime = '';
+                $this->rateLimitWaitMinutes = 0;
+            }
+        }
     }
 
     public function loadKeywords()
@@ -131,6 +165,9 @@ class KeywordMonitoringComponent extends Component
 
     public function loadTweets($forceRefresh = false)
     {
+        // Always check rate limit status before making API calls
+        $this->checkRateLimitStatus();
+        
         // Prevent concurrent loads
         if ($this->isLoading) {
             Log::info('Load already in progress, skipping duplicate request');
@@ -194,8 +231,26 @@ class KeywordMonitoringComponent extends Component
                 $this->isLoading = false;
                 return;
             }
+            
+            // If no cache and rate limited, don't make API call
+            if ($this->isRateLimited) {
+                Log::warning('🚫 Rate limited - skipping API call, no cache available');
+                $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s). Reset time: {$this->rateLimitResetTime}";
+                $this->searchLoading = false;
+                $this->isLoading = false;
+                return;
+            }
         } else {
             Log::info('Force refresh requested - bypassing cache');
+            
+            // If forcing refresh but rate limited, don't make API call
+            if ($this->isRateLimited) {
+                Log::warning('🚫 Rate limited - cannot force refresh');
+                $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+                $this->searchLoading = false;
+                $this->isLoading = false;
+                return;
+            }
         }
 
         try {
@@ -331,6 +386,27 @@ class KeywordMonitoringComponent extends Component
             ]);
             
             if ($statusCode === 429) {
+                // Check rate limit info and update UI
+                $user = Auth::user();
+                if ($user) {
+                    $settings = [
+                        'account_id' => $user->twitter_account_id,
+                        'access_token' => $user->twitter_access_token,
+                        'access_token_secret' => $user->twitter_access_token_secret,
+                        'consumer_key' => config('services.twitter.api_key'),
+                        'consumer_secret' => config('services.twitter.api_key_secret'),
+                        'bearer_token' => config('services.twitter.bearer_token'),
+                    ];
+                    
+                    $twitterService = new TwitterService($settings);
+                    $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+                    
+                    if ($rateLimitCheck['rate_limited']) {
+                        $this->isRateLimited = true;
+                        $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
+                        $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                    }
+                }
                 $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
             } elseif ($statusCode === 401) {
                 $this->errorMessage = 'Authentication failed. Please check your Twitter connection.';
@@ -355,8 +431,32 @@ class KeywordMonitoringComponent extends Component
             
             // Check if error message contains rate limit info
             if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
-                strpos($e->getMessage(), 'Rate limit') !== false) {
-                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
+                strpos($e->getMessage(), 'Rate limit') !== false ||
+                strpos($e->getMessage(), 'Rate limit active') !== false) {
+                
+                // Check rate limit info and update UI
+                $user = Auth::user();
+                if ($user) {
+                    $settings = [
+                        'account_id' => $user->twitter_account_id,
+                        'access_token' => $user->twitter_access_token,
+                        'access_token_secret' => $user->twitter_access_token_secret,
+                        'consumer_key' => config('services.twitter.api_key'),
+                        'consumer_secret' => config('services.twitter.api_key_secret'),
+                        'bearer_token' => config('services.twitter.bearer_token'),
+                    ];
+                    
+                    $twitterService = new TwitterService($settings);
+                    $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+                    
+                    if ($rateLimitCheck['rate_limited']) {
+                        $this->isRateLimited = true;
+                        $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
+                        $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                    }
+                }
+                
+                $this->errorMessage = $e->getMessage() ?: 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
             } else {
                 $this->errorMessage = 'Failed to search tweets: ' . $e->getMessage();
             }
@@ -770,6 +870,14 @@ class KeywordMonitoringComponent extends Component
 
     public function refreshTweets()
     {
+        // Check rate limit before making request (search uses same API key pool)
+        $this->checkRateLimitStatus();
+        
+        if ($this->isRateLimited) {
+            $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+            return;
+        }
+        
         // Force refresh to bypass cache
         $this->loadTweets(true);
     }

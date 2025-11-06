@@ -7,22 +7,29 @@
             @if($lastRefresh)
                 <span class="text-sm text-gray-500">Last updated: {{ $lastRefresh }}</span>
             @endif
-            <button wire:click="loadTweets" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
-                <i class="bx bx-data mr-1"></i>
-                <span wire:loading.remove wire:target="loadTweets">
-                    Load from Cache
+            @if($isRateLimited)
+                <span class="text-sm text-orange-600 font-medium">
+                    Rate Limited - Wait {{ $rateLimitWaitMinutes }} min(s) | Resets: {{ $rateLimitResetTime }}
                 </span>
-                <span wire:loading wire:target="loadTweets">
-                    Loading...
-                </span>
-            </button>
-            <button wire:click="refreshTweets" 
+            @endif
+            <button type="button"
+                    wire:click="refreshTweets" 
                     wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-green-600 bg-gradient-to-r from-green-100 to-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer">
+                    @if($isRateLimited) disabled style="pointer-events: none;" @endif
+                    class="px-4 py-2 text-sm font-medium rounded-xl transition-colors
+                           @if($isRateLimited)
+                               text-gray-400 bg-gray-100 cursor-not-allowed opacity-50
+                           @else
+                               text-green-600 bg-gradient-to-r from-green-100 to-green-200 hover:bg-green-200 cursor-pointer
+                           @endif">
                 <i class="bx bx-sync mr-1"></i>
-                <span wire:loading.remove wire:target="refreshTweets">Sync Fresh Data</span>
+                <span wire:loading.remove wire:target="refreshTweets">
+                    @if($isRateLimited)
+                        Rate Limited
+                    @else
+                        Sync Fresh Data
+                    @endif
+                </span>
                 <span wire:loading wire:target="refreshTweets">Syncing...</span>
             </button>
         </div>
