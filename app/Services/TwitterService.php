@@ -1410,60 +1410,174 @@ class TwitterService
             // Twitter API v2 expects tweet_id as a string
             $tweetIdString = (string) $tweetId;
             
-            // Use the package method - same pattern as retweet  
-            return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetIdString]);
+            // Try the package method with tweet_id as parameter to like() method
+            // According to package docs: $client->tweetLikes()->like($tweetId)->performRequest()
+            try {
+                Log::info('Attempting like with tweet_id parameter', ['tweet_id' => $tweetIdString, 'account_id' => $this->settings['account_id']]);
+                return $this->client->tweetLikes()->like($tweetIdString)->performRequest();
+            } catch (\Exception $e) {
+                // If that fails, try the alternative pattern (tweet_id in performRequest)
+                // This matches the retweet pattern
+                if (strpos($e->getMessage(), 'Method') !== false || strpos($e->getMessage(), 'not found') !== false || strpos($e->getMessage(), 'Call to undefined method') !== false) {
+                    Log::info('Trying alternative like method pattern (tweet_id in performRequest)', ['tweet_id' => $tweetIdString]);
+                    return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetIdString]);
+                }
+                // Re-throw if it's not a method signature error
+                throw $e;
+            }
             
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $response = $e->getResponse();
             $statusCode = $response->getStatusCode();
+            
+            // Read the body and rewind it so it can be read again if needed
             $body = $response->getBody()->getContents();
+            $response->getBody()->rewind();
             
             // Parse the JSON body to get the full error detail
             $errorData = json_decode($body, true);
+            
+            // Extract full error message
+            $fullErrorDetail = $errorData['detail'] ?? null;
+            $errorTitle = $errorData['title'] ?? null;
+            $errorType = $errorData['type'] ?? null;
+            $clientId = $errorData['client_id'] ?? null;
+            $registrationUrl = $errorData['registration_url'] ?? null;
             
             Log::error('❌ likeTweet ClientException - Full Error Details', [
                 'tweet_id' => $tweetId,
                 'status_code' => $statusCode,
                 'error_body' => $body,
-                'error_detail' => $errorData['detail'] ?? null,
-                'error_title' => $errorData['title'] ?? null,
-                'error_type' => $errorData['type'] ?? null,
-                'error_detail_UNESCAPED' => $errorData['detail'] ?? 'NO DETAIL',
+                'error_detail' => $fullErrorDetail,
+                'error_title' => $errorTitle,
+                'error_type' => $errorType,
+                'client_id' => $clientId,
+                'registration_url' => $registrationUrl,
                 'settings_keys' => array_keys($this->settings),
                 'has_all_required' => !empty($this->settings['consumer_key']) && 
                                        !empty($this->settings['consumer_secret']) &&
                                        !empty($this->settings['access_token']) &&
                                        !empty($this->settings['access_token_secret']),
                 'access_token_length' => strlen($this->settings['access_token'] ?? ''),
-                'access_token_secret_length' => strlen($this->settings['access_token_secret'] ?? '')
+                'access_token_secret_length' => strlen($this->settings['access_token_secret'] ?? ''),
+                'account_id' => $this->settings['account_id'] ?? 'not_set'
             ]);
             
-            $errorMessage = $body ?: $e->getMessage();
+            // Check for client-not-enrolled error specifically
+            if ($statusCode === 403 && ($errorTitle === 'Client Forbidden' || strpos($fullErrorDetail ?? '', 'client-not-enrolled') !== false || strpos($fullErrorDetail ?? '', 'When authenticating requests to the Twitter API v2 endpoints') !== false)) {
+                $userMessage = "Twitter API configuration error: Your app needs to be attached to a Project in the Twitter Developer Portal. ";
+                if ($registrationUrl) {
+                    $userMessage .= "Visit: " . $registrationUrl;
+                } else {
+                    $userMessage .= "Go to https://developer.twitter.com/en/portal/dashboard and ensure your app is attached to a Project.";
+                }
+                
+                return (object) [
+                    'data' => [
+                        'liked' => false, 
+                        'message' => $userMessage
+                    ], 
+                    'error' => $fullErrorDetail ?? 'Client not enrolled'
+                ];
+            }
+            
+            $errorMessage = $fullErrorDetail ?? $body ?: $e->getMessage();
             
             // Return immediately with the parsed error detail
             return (object) [
                 'data' => [
                     'liked' => false, 
-                    'message' => "Twitter API error: " . ($errorData['detail'] ?? 'Unknown error')
+                    'message' => "Twitter API error: " . $errorMessage
                 ], 
-                'error' => $errorData['detail'] ?? 'Unknown error'
+                'error' => $errorMessage
             ];
             
         } catch (\Exception $e) {
-            Log::error('❌ likeTweet General Error', [
-                'tweet_id' => $tweetId,
-                'error' => $e->getMessage(),
-                'class' => get_class($e),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
+            // Try to extract the full error message from nested exceptions
             $errorMessage = $e->getMessage();
+            $fullErrorBody = null;
+            $errorData = null;
+            $statusCode = null;
+            
+            // If it's a RuntimeException wrapping a ClientException, try to get the response body
+            if ($e instanceof \RuntimeException && $e->getPrevious() instanceof \GuzzleHttp\Exception\ClientException) {
+                try {
+                    $previous = $e->getPrevious();
+                    $response = $previous->getResponse();
+                    $statusCode = $response->getStatusCode();
+                    
+                    // Read the body and rewind it
+                    $fullErrorBody = $response->getBody()->getContents();
+                    $response->getBody()->rewind();
+                    
+                    $errorData = json_decode($fullErrorBody, true);
+                    
+                    // Extract full error details
+                    $fullErrorDetail = $errorData['detail'] ?? null;
+                    $errorTitle = $errorData['title'] ?? null;
+                    $clientId = $errorData['client_id'] ?? null;
+                    $registrationUrl = $errorData['registration_url'] ?? null;
+                    
+                    if ($fullErrorDetail) {
+                        $errorMessage = $fullErrorDetail;
+                    }
+                    
+                    Log::error('❌ likeTweet General Error (from wrapped ClientException)', [
+                        'tweet_id' => $tweetId,
+                        'status_code' => $statusCode,
+                        'error_body' => $fullErrorBody,
+                        'error_detail' => $fullErrorDetail,
+                        'error_title' => $errorTitle,
+                        'client_id' => $clientId,
+                        'registration_url' => $registrationUrl,
+                        'error_message' => $errorMessage,
+                        'class' => get_class($e),
+                        'previous_class' => get_class($previous)
+                    ]);
+                    
+                    // Check for client-not-enrolled error specifically
+                    if ($statusCode === 403 && ($errorTitle === 'Client Forbidden' || strpos($fullErrorDetail ?? '', 'client-not-enrolled') !== false || strpos($fullErrorDetail ?? '', 'When authenticating requests to the Twitter API v2 endpoints') !== false)) {
+                        $userMessage = "Twitter API configuration error: Your app needs to be attached to a Project in the Twitter Developer Portal. ";
+                        if ($registrationUrl) {
+                            $userMessage .= "Visit: " . $registrationUrl;
+                        } else {
+                            $userMessage .= "Go to https://developer.twitter.com/en/portal/dashboard and ensure your app is attached to a Project. The error indicates your app (client_id: {$clientId}) is not enrolled for API v2 endpoints.";
+                        }
+                        
+                        return (object) [
+                            'data' => [
+                                'liked' => false, 
+                                'message' => $userMessage
+                            ], 
+                            'error' => $fullErrorDetail ?? 'Client not enrolled'
+                        ];
+                    }
+                    
+                } catch (\Exception $ex) {
+                    // If we can't extract, use the original message
+                    Log::warning('Failed to extract error from wrapped exception', [
+                        'error' => $ex->getMessage()
+                    ]);
+                }
+            }
+            
+            // If we didn't extract from wrapped exception, log the original
+            if (!$fullErrorBody) {
+                Log::error('❌ likeTweet General Error', [
+                    'tweet_id' => $tweetId,
+                    'error' => $errorMessage,
+                    'full_error_body' => $fullErrorBody,
+                    'class' => get_class($e),
+                    'previous_class' => $e->getPrevious() ? get_class($e->getPrevious()) : null,
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
             
             // Extract user-friendly error from response
             $userMessage = "Failed to like tweet";
             
-            if (strpos($errorMessage, '403 Forbidden') !== false) {
-                $userMessage = "Twitter API authentication error. Your account may need to be reconnected. Please check your Twitter connection in settings.";
+            if (strpos($errorMessage, '403 Forbidden') !== false || strpos($errorMessage, 'client-not-enrolled') !== false || strpos($errorMessage, 'When authenticating requests to the Twitter API v2 endpoints') !== false) {
+                $userMessage = "Twitter API configuration error: Your app needs to be attached to a Project in the Twitter Developer Portal. Go to https://developer.twitter.com/en/portal/dashboard and ensure your app is attached to a Project.";
             } elseif (strpos($errorMessage, '429 Too Many Requests') !== false || strpos($errorMessage, 'Too Many Requests') !== false) {
                 $userMessage = 'Rate limit exceeded. Please wait a moment before liking again.';
             } elseif (strpos($errorMessage, '401') !== false) {

@@ -458,18 +458,41 @@ class TwitterMentionsComponent extends Component
             $response = $twitterService->likeTweet($mentionId);
             
             if ($response) {
-                Log::info('✅ Like successful', ['mention_id' => $mentionId, 'response' => $response]);
+                Log::info('✅ Like response received', ['mention_id' => $mentionId, 'response' => $response]);
                 
-                // Check if it's a rate limit message
-                if (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
-                    $this->errorMessage = $response->data->message;
-                    $this->dispatch('show-error', $response->data->message);
-                } else {
+                // Check if the like actually succeeded
+                $liked = isset($response->data->liked) ? $response->data->liked : false;
+                $hasMessage = isset($response->data->message) && !empty($response->data->message);
+                $message = $response->data->message ?? '';
+                
+                if ($liked === true) {
+                    // Only clear cache if like actually succeeded
                     $this->successMessage = 'Tweet liked successfully!';
                     $this->dispatch('show-success', 'Tweet liked successfully!');
+                    $this->clearMentionsCache();
+                    Log::info('✅ Like successful - cache cleared', ['mention_id' => $mentionId]);
+                } elseif ($hasMessage && (strpos($message, 'Rate limit exceeded') !== false || strpos($message, 'Too Many Requests') !== false)) {
+                    // Rate limit error
+                    $this->errorMessage = $message;
+                    $this->dispatch('show-error', $message);
+                    Log::warning('⚠️ Like rate limited - cache NOT cleared', ['mention_id' => $mentionId]);
+                } elseif ($hasMessage || $liked === false) {
+                    // Like failed - show error but don't clear cache
+                    $this->errorMessage = $message ?: 'Failed to like tweet';
+                    $this->dispatch('show-error', $this->errorMessage);
+                    Log::warning('⚠️ Like failed - cache NOT cleared', [
+                        'mention_id' => $mentionId,
+                        'liked' => $liked,
+                        'error' => $message ?: 'Unknown error'
+                    ]);
+                } else {
+                    // Unknown response - don't clear cache
+                    $this->errorMessage = 'Unexpected response from Twitter API';
+                    Log::warning('⚠️ Unexpected like response - cache NOT cleared', [
+                        'mention_id' => $mentionId,
+                        'response' => $response
+                    ]);
                 }
-                // Clear cache to show updated data
-                $this->clearMentionsCache();
             }
         } catch (\Exception $e) {
             Log::error('❌ Failed to like mention', [
@@ -496,21 +519,42 @@ class TwitterMentionsComponent extends Component
             $response = $twitterService->retweet($mentionId);
             
             if ($response) {
+                $retweeted = isset($response->data->retweeted) ? $response->data->retweeted : false;
+                $hasError = isset($response->data->message) && !empty($response->data->message);
+                
                 // Check if it was already retweeted
                 if (isset($response->data->message) && strpos($response->data->message, 'already retweeted') !== false) {
                     $this->successMessage = 'Tweet was already retweeted!';
                     $this->dispatch('show-success', 'Tweet was already retweeted!');
+                    // Clear cache to show updated state
+                    $this->clearMentionsCache();
                 } 
                 // Check if it's a rate limit message
                 elseif (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
                     $this->errorMessage = $response->data->message;
                     $this->dispatch('show-error', $response->data->message);
+                    // Don't clear cache on rate limit
+                } elseif ($retweeted === true) {
+                    // Retweet succeeded - clear cache
+                    $this->successMessage = 'Tweet retweeted successfully!';
+                    $this->dispatch('show-success', 'Tweet retweeted successfully!');
+                    $this->clearMentionsCache();
+                } elseif ($hasError) {
+                    // Retweet failed - show error but don't clear cache
+                    $this->errorMessage = $response->data->message ?? 'Failed to retweet';
+                    $this->dispatch('show-error', $this->errorMessage);
+                    Log::warning('⚠️ Retweet failed - cache NOT cleared', [
+                        'mention_id' => $mentionId,
+                        'error' => $response->data->message ?? 'Unknown error'
+                    ]);
                 } else {
-                $this->successMessage = 'Tweet retweeted successfully!';
-                $this->dispatch('show-success', 'Tweet retweeted successfully!');
+                    // Unknown response - don't clear cache
+                    $this->errorMessage = 'Unexpected response from Twitter API';
+                    Log::warning('⚠️ Unexpected retweet response - cache NOT cleared', [
+                        'mention_id' => $mentionId,
+                        'response' => $response
+                    ]);
                 }
-                // Clear cache to show updated data
-                $this->clearMentionsCache();
             }
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to retweet: ' . $e->getMessage();
@@ -537,6 +581,27 @@ class TwitterMentionsComponent extends Component
         
         if ($this->isRateLimited) {
             $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+            // Don't clear cache when rate limited - try to load from existing cache
+            Log::warning('🚫 Refresh blocked - rate limited, attempting to load from existing cache');
+            
+            // Try to load from cache if available
+            $user = Auth::user();
+            if ($user) {
+                $cacheKey = 'twitter_mentions_' . $user->id;
+                $cachedMentions = \Illuminate\Support\Facades\Cache::get($cacheKey);
+                
+                if ($cachedMentions) {
+                    Log::info('✅ Loading from cache while rate limited', [
+                        'mentions_count' => count($cachedMentions['data'] ?? []),
+                        'last_updated' => $cachedMentions['timestamp'] ?? 'unknown'
+                    ]);
+                    $this->mentions = $cachedMentions['data'] ?? [];
+                    $this->users = $cachedMentions['users'] ?? [];
+                    $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
+                    $this->currentPage = 1;
+                    $this->successMessage = 'Showing cached data (rate limited). Cache updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '.';
+                }
+            }
             return;
         }
         

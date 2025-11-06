@@ -949,6 +949,26 @@ class KeywordMonitoringComponent extends Component
         
         if ($this->isRateLimited) {
             $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+            // Don't clear cache when rate limited - try to load from existing cache
+            Log::warning('🚫 Refresh blocked - rate limited, attempting to load from existing cache');
+            
+            // Try to load from cache if available
+            $user = Auth::user();
+            if ($user) {
+                $cacheKey = 'keyword_search_' . $user->id . '_' . md5($this->advancedSearch ? $this->buildAdvancedQuery() : implode(',', $this->keywords));
+                $cachedTweets = \Illuminate\Support\Facades\Cache::get($cacheKey);
+                
+                if ($cachedTweets) {
+                    Log::info('✅ Loading from cache while rate limited', [
+                        'tweets_count' => count($cachedTweets['data'] ?? []),
+                        'last_updated' => $cachedTweets['timestamp'] ?? 'unknown'
+                    ]);
+                    $this->tweets = $cachedTweets['data'] ?? [];
+                    $this->lastRefresh = $cachedTweets['timestamp'] ?? now()->format('M j, Y g:i A');
+                    $this->currentPage = 1;
+                    $this->successMessage = 'Showing cached data (rate limited). Cache updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '.';
+                }
+            }
             return;
         }
         
