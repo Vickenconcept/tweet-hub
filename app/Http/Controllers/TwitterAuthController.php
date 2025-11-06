@@ -34,7 +34,7 @@ class TwitterAuthController extends Controller
 
         if (!$oauthToken || !$oauthTokenSecret || !$oauthVerifier) {
             Log::error('Twitter callback missing tokens', compact('oauthToken', 'oauthTokenSecret', 'oauthVerifier'));
-            return redirect('/')->with('error', 'Twitter connection failed: missing tokens.');
+            return redirect('/home')->with('error', 'Twitter connection failed: missing tokens.');
         }
 
         $twitter = new TwitterOAuth(
@@ -73,7 +73,7 @@ class TwitterAuthController extends Controller
         Log::info('User after save', ['user' => $user, 'saved' => $saved]);
         if (!$saved) {
             Log::error('Failed to save user after Twitter connect', ['user' => $user]);
-            return redirect('/')->with('error', 'Failed to save Twitter connection.');
+            return redirect('/home')->with('error', 'Failed to save Twitter connection.');
         }
 
         // Clean up session
@@ -85,7 +85,7 @@ class TwitterAuthController extends Controller
             $this->fetchAndSaveProfileDataV2($user);
         }
 
-        return redirect('/')->with('success', 'Twitter account connected!');
+        return redirect('/home')->with('success', 'Twitter account connected!');
     }
 
     /**

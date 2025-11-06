@@ -172,6 +172,24 @@ class TwitterService
                 Log::warning('Could not read rate limit headers', ['error' => $headerEx->getMessage()]);
             }
             
+            // Parse response body to check for monthly quota errors
+            $isMonthlyQuota = false;
+            try {
+                $errorData = json_decode($body, true);
+                if (isset($errorData['title']) && strpos($errorData['title'], 'UsageCapExceeded') !== false) {
+                    $isMonthlyQuota = true;
+                } elseif (isset($errorData['detail']) && (strpos($errorData['detail'], 'UsageCapExceeded') !== false || strpos($errorData['detail'], 'Monthly') !== false)) {
+                    $isMonthlyQuota = true;
+                } elseif (isset($errorData['account_id']) && isset($errorData['product_name']) && isset($errorData['period']) && $errorData['period'] === 'Monthly') {
+                    $isMonthlyQuota = true;
+                }
+            } catch (\Exception $parseEx) {
+                // If JSON parsing fails, check if body contains quota keywords
+                if (strpos($body, 'UsageCapExceeded') !== false || strpos($body, 'Monthly') !== false) {
+                    $isMonthlyQuota = true;
+                }
+            }
+            
             Log::error('❌ Twitter API Error fetching mentions', [
                 'account_id' => $accountId,
                 'status_code' => $statusCode,
@@ -180,13 +198,22 @@ class TwitterService
                 'rate_limit_reset' => $rateLimitReset ? date('Y-m-d H:i:s', $rateLimitReset) : null,
                 'rate_limit_reset_timestamp' => $rateLimitReset,
                 'error_body' => $body,
+                'is_monthly_quota' => $isMonthlyQuota,
                 'total_requests_made' => 1
             ]);
             
             // If we got a 429, store rate limit info and DO NOT RETRY
             if ($statusCode === 429) {
-                // If no reset time in headers, use default 15 minutes from now
-                if (!$rateLimitReset) {
+                // Check if it's a monthly quota exceeded
+                if ($isMonthlyQuota) {
+                    // For monthly quota, set rate limit to 30 days from now
+                    $rateLimitReset = time() + (30 * 24 * 60 * 60); // 30 days
+                    Log::warning('⚠️ Monthly quota exceeded detected (Mentions) - setting 30-day rate limit', [
+                        'account_id' => $accountId,
+                        'reset_time' => date('Y-m-d H:i:s', $rateLimitReset)
+                    ]);
+                } elseif (!$rateLimitReset) {
+                    // If no reset time in headers and not monthly quota, use default 15 minutes from now
                     $rateLimitReset = time() + (15 * 60); // 15 minutes from now
                     Log::warning('⚠️ 429 received but no x-rate-limit-reset header - using default 15 minutes', [
                         'account_id' => $accountId,
@@ -201,12 +228,14 @@ class TwitterService
                     'remaining' => 0,
                     'limit' => $rateLimitLimit ?? 0,
                     'reset_time' => $rateLimitReset,
-                    'reset_datetime' => date('Y-m-d H:i:s', $rateLimitReset)
+                    'reset_datetime' => date('Y-m-d H:i:s', $rateLimitReset),
+                    'is_monthly_quota' => $isMonthlyQuota
                 ];
                 
                 \Illuminate\Support\Facades\Cache::put($rateLimitKey, $rateLimitData, $cacheTtl);
                 
                 $waitMinutes = ceil(($rateLimitReset - time()) / 60);
+                $waitDays = $isMonthlyQuota ? ceil($waitMinutes / (24 * 60)) : 0;
                 
                 // Verify cache was stored
                 $verifyCache = \Illuminate\Support\Facades\Cache::get($rateLimitKey);
@@ -217,15 +246,21 @@ class TwitterService
                     'reset_time' => date('Y-m-d H:i:s', $rateLimitReset),
                     'reset_timestamp' => $rateLimitReset,
                     'wait_minutes' => $waitMinutes,
+                    'wait_days' => $waitDays,
                     'cache_ttl_seconds' => $cacheTtl,
                     'rate_limit_limit' => $rateLimitLimit,
                     'cache_stored' => $verifyCache ? 'yes' : 'no',
                     'has_reset_header' => $rateLimitReset ? 'yes' : 'no',
-                    'message' => 'Rate limit exceeded. Stored in cache to prevent further requests.'
+                    'is_monthly_quota' => $isMonthlyQuota,
+                    'message' => $isMonthlyQuota ? 'Monthly quota exceeded. Stored in cache to prevent further requests.' : 'Rate limit exceeded. Stored in cache to prevent further requests.'
                 ]);
                 
                 // DO NOT RETRY on 429 - throw immediately
-                throw new \Exception("Rate limit exceeded (429). Reset time: " . date('Y-m-d H:i:s', $rateLimitReset) . ". Please wait before trying again.");
+                $errorMsg = $isMonthlyQuota 
+                    ? "Monthly API quota exceeded. Reset time: " . date('Y-m-d H:i:s', $rateLimitReset) . ". Please wait before trying again."
+                    : "Rate limit exceeded (429). Reset time: " . date('Y-m-d H:i:s', $rateLimitReset) . ". Please wait before trying again.";
+                
+                throw new \Exception($errorMsg);
             }
             
             // For other client errors, don't retry
@@ -491,10 +526,142 @@ class TwitterService
             // Convert to object format to match existing code
             return (object) $data;
 
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $response = $e->getResponse();
+            $statusCode = $response->getStatusCode();
+            $body = $response->getBody()->getContents();
+            
+            // Get rate limit cache key
+            $rateLimitKey = 'twitter_rate_limit_search_' . md5($this->settings['consumer_key'] ?? 'default');
+            
+            // Extract rate limit headers
+            $rateLimitRemaining = null;
+            $rateLimitLimit = null;
+            $rateLimitReset = null;
+            
+            try {
+                if ($response->hasHeader('x-rate-limit-remaining')) {
+                    $rateLimitRemaining = (int) $response->getHeaderLine('x-rate-limit-remaining');
+                }
+                if ($response->hasHeader('x-rate-limit-limit')) {
+                    $rateLimitLimit = (int) $response->getHeaderLine('x-rate-limit-limit');
+                }
+                if ($response->hasHeader('x-rate-limit-reset')) {
+                    $rateLimitReset = (int) $response->getHeaderLine('x-rate-limit-reset');
+                }
+            } catch (\Exception $headerEx) {
+                Log::warning('Could not read rate limit headers', ['error' => $headerEx->getMessage()]);
+            }
+            
+            // Parse response body to check for monthly quota errors
+            $isMonthlyQuota = false;
+            try {
+                $errorData = json_decode($body, true);
+                if (isset($errorData['title']) && strpos($errorData['title'], 'UsageCapExceeded') !== false) {
+                    $isMonthlyQuota = true;
+                } elseif (isset($errorData['detail']) && (strpos($errorData['detail'], 'UsageCapExceeded') !== false || strpos($errorData['detail'], 'Monthly') !== false)) {
+                    $isMonthlyQuota = true;
+                } elseif (isset($errorData['account_id']) && isset($errorData['product_name']) && isset($errorData['period']) && $errorData['period'] === 'Monthly') {
+                    $isMonthlyQuota = true;
+                }
+            } catch (\Exception $parseEx) {
+                // If JSON parsing fails, check if body contains quota keywords
+                if (strpos($body, 'UsageCapExceeded') !== false || strpos($body, 'Monthly') !== false) {
+                    $isMonthlyQuota = true;
+                }
+            }
+            
+            Log::error('❌ Twitter API Error - Search', [
+                'query' => $query,
+                'status_code' => $statusCode,
+                'rate_limit_remaining' => $rateLimitRemaining,
+                'rate_limit_limit' => $rateLimitLimit,
+                'rate_limit_reset' => $rateLimitReset ? date('Y-m-d H:i:s', $rateLimitReset) : null,
+                'rate_limit_reset_timestamp' => $rateLimitReset,
+                'error_body' => $body,
+                'is_monthly_quota' => $isMonthlyQuota,
+                'total_requests_made' => 1
+            ]);
+            
+            // If we got a 429, store rate limit info and DO NOT RETRY
+            if ($statusCode === 429) {
+                // Check if it's a monthly quota exceeded
+                if ($isMonthlyQuota) {
+                    // For monthly quota, set rate limit to 30 days from now
+                    $rateLimitReset = time() + (30 * 24 * 60 * 60); // 30 days
+                    Log::warning('⚠️ Monthly quota exceeded detected (Search) - setting 30-day rate limit', [
+                        'query' => $query,
+                        'reset_time' => date('Y-m-d H:i:s', $rateLimitReset)
+                    ]);
+                } elseif (!$rateLimitReset) {
+                    // If no reset time in headers and not monthly quota, use default 15 minutes from now
+                    $rateLimitReset = time() + (15 * 60); // 15 minutes from now
+                    Log::warning('⚠️ 429 received but no x-rate-limit-reset header - using default 15 minutes', [
+                        'query' => $query,
+                        'default_reset_time' => date('Y-m-d H:i:s', $rateLimitReset)
+                    ]);
+                }
+                
+                // Store rate limit info in cache until reset time
+                $cacheUntil = $rateLimitReset + 60; // Cache for 1 minute after reset to be safe
+                $cacheTtl = $cacheUntil - time();
+                $rateLimitData = [
+                    'remaining' => 0,
+                    'limit' => $rateLimitLimit ?? 0,
+                    'reset_time' => $rateLimitReset,
+                    'reset_datetime' => date('Y-m-d H:i:s', $rateLimitReset),
+                    'is_monthly_quota' => $isMonthlyQuota
+                ];
+                
+                \Illuminate\Support\Facades\Cache::put($rateLimitKey, $rateLimitData, $cacheTtl);
+                
+                $waitMinutes = ceil(($rateLimitReset - time()) / 60);
+                $waitDays = $isMonthlyQuota ? ceil($waitMinutes / (24 * 60)) : 0;
+                
+                // Verify cache was stored
+                $verifyCache = \Illuminate\Support\Facades\Cache::get($rateLimitKey);
+                
+                Log::error('🚫 RATE LIMIT HIT - DO NOT RETRY (Search)', [
+                    'query' => $query,
+                    'cache_key' => $rateLimitKey,
+                    'reset_time' => date('Y-m-d H:i:s', $rateLimitReset),
+                    'reset_timestamp' => $rateLimitReset,
+                    'wait_minutes' => $waitMinutes,
+                    'wait_days' => $waitDays,
+                    'cache_ttl_seconds' => $cacheTtl,
+                    'rate_limit_limit' => $rateLimitLimit,
+                    'cache_stored' => $verifyCache ? 'yes' : 'no',
+                    'has_reset_header' => $rateLimitReset ? 'yes' : 'no',
+                    'is_monthly_quota' => $isMonthlyQuota,
+                    'message' => $isMonthlyQuota ? 'Monthly quota exceeded. Stored in cache to prevent further requests.' : 'Rate limit exceeded. Stored in cache to prevent further requests.'
+                ]);
+                
+                // DO NOT RETRY on 429 - throw immediately
+                $errorMsg = $isMonthlyQuota 
+                    ? "Monthly API quota exceeded. Reset time: " . date('Y-m-d H:i:s', $rateLimitReset) . ". Please wait before trying again."
+                    : "Rate limit exceeded (429). Reset time: " . date('Y-m-d H:i:s', $rateLimitReset) . ". Please wait before trying again.";
+                
+                throw new \Exception($errorMsg);
+            }
+            
+            // For other client errors, don't retry
+            if ($statusCode >= 400 && $statusCode < 500) {
+                throw $e;
+            }
+            
+            // For server errors (5xx), we could retry, but let's be conservative
+            throw $e;
+            
         } catch (\Exception $e) {
+            // Re-throw if it's already our custom exception
+            if (strpos($e->getMessage(), 'Rate limit') !== false || strpos($e->getMessage(), 'Monthly') !== false) {
+                throw $e;
+            }
+            
             Log::error('Direct Twitter search failed', [
                 'query' => $query,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'class' => get_class($e)
             ]);
             throw $e;
         }
