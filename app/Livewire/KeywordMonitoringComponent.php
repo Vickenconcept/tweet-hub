@@ -88,12 +88,22 @@ class KeywordMonitoringComponent extends Component
             ];
             
             $twitterService = new TwitterService($settings);
-            $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+            $rateLimitCheck = $twitterService->isRateLimitedForSearch();
+            
+            Log::info('🔍 Rate limit status check (Search)', [
+                'rate_limited' => $rateLimitCheck['rate_limited'] ?? false,
+                'reset_time' => $rateLimitCheck['reset_time'] ?? 'none',
+                'wait_minutes' => $rateLimitCheck['wait_minutes'] ?? 0
+            ]);
             
             if ($rateLimitCheck['rate_limited']) {
                 $this->isRateLimited = true;
                 $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
                 $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                Log::warning('🚫 Rate limit ACTIVE - UI updated (Search)', [
+                    'reset_time' => $this->rateLimitResetTime,
+                    'wait_minutes' => $this->rateLimitWaitMinutes
+                ]);
             } else {
                 $this->isRateLimited = false;
                 $this->rateLimitResetTime = '';
@@ -376,38 +386,51 @@ class KeywordMonitoringComponent extends Component
             ], 14400); // 4 hour cache
 
         } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $statusCode = $e->getResponse()->getStatusCode();
-            $responseBody = $e->getResponse()->getBody()->getContents();
+            $response = $e->getResponse();
+            $statusCode = $response->getStatusCode();
+            $responseBody = $response->getBody()->getContents();
             
-            Log::error('Twitter API Client Error', [
+            // Extract rate limit headers directly from response
+            $rateLimitReset = null;
+            try {
+                if ($response->hasHeader('x-rate-limit-reset')) {
+                    $rateLimitReset = (int) $response->getHeaderLine('x-rate-limit-reset');
+                }
+            } catch (\Exception $headerEx) {
+                Log::warning('Could not read rate limit reset header', ['error' => $headerEx->getMessage()]);
+            }
+            
+            Log::error('Twitter API Client Error - Search', [
                 'status_code' => $statusCode,
+                'rate_limit_reset' => $rateLimitReset ? date('Y-m-d H:i:s', $rateLimitReset) : null,
                 'response_body' => $responseBody,
                 'query' => $this->advancedSearch ? $this->buildAdvancedQuery() : 'keyword search'
             ]);
             
             if ($statusCode === 429) {
-                // Check rate limit info and update UI
-                $user = Auth::user();
-                if ($user) {
-                    $settings = [
-                        'account_id' => $user->twitter_account_id,
-                        'access_token' => $user->twitter_access_token,
-                        'access_token_secret' => $user->twitter_access_token_secret,
-                        'consumer_key' => config('services.twitter.api_key'),
-                        'consumer_secret' => config('services.twitter.api_key_secret'),
-                        'bearer_token' => config('services.twitter.bearer_token'),
-                    ];
+                // Update rate limit status immediately from response headers
+                if ($rateLimitReset) {
+                    $waitMinutes = ceil(($rateLimitReset - time()) / 60);
+                    $resetDateTime = date('Y-m-d H:i:s', $rateLimitReset);
                     
-                    $twitterService = new TwitterService($settings);
-                    $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+                    $this->isRateLimited = true;
+                    $this->rateLimitResetTime = $resetDateTime;
+                    $this->rateLimitWaitMinutes = $waitMinutes;
+                    $this->errorMessage = "Rate limit exceeded. Please wait {$waitMinutes} minute(s) before trying again. Reset time: {$resetDateTime}";
                     
-                    if ($rateLimitCheck['rate_limited']) {
-                        $this->isRateLimited = true;
-                        $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
-                        $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                    Log::warning('🚫 Rate limit detected from 429 response (Search)', [
+                        'reset_time' => $resetDateTime,
+                        'wait_minutes' => $waitMinutes
+                    ]);
+                } else {
+                    // Fallback: check cache (TwitterService should have stored it)
+                    $this->checkRateLimitStatus();
+                    if ($this->isRateLimited) {
+                        $this->errorMessage = "Rate limit exceeded. Please wait {$this->rateLimitWaitMinutes} minute(s) before trying again. Reset time: {$this->rateLimitResetTime}";
+                    } else {
+                        $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
                     }
                 }
-                $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
             } elseif ($statusCode === 401) {
                 $this->errorMessage = 'Authentication failed. Please check your Twitter connection.';
             } elseif ($statusCode === 403) {
@@ -426,15 +449,25 @@ class KeywordMonitoringComponent extends Component
         } catch (\Exception $e) {
             Log::error('Search error', [
                 'error' => $e->getMessage(),
-                'query' => $this->advancedSearch ? $this->buildAdvancedQuery() : 'keyword search'
+                'query' => $this->advancedSearch ? $this->buildAdvancedQuery() : 'keyword search',
+                'class' => get_class($e)
             ]);
             
             // Check if error message contains rate limit info
-            if (strpos($e->getMessage(), '429 Too Many Requests') !== false || 
-                strpos($e->getMessage(), 'Rate limit') !== false ||
-                strpos($e->getMessage(), 'Rate limit active') !== false) {
+            $errorMessage = $e->getMessage();
+            if (strpos($errorMessage, '429 Too Many Requests') !== false || 
+                strpos($errorMessage, 'Rate limit') !== false ||
+                strpos($errorMessage, 'Rate limit active') !== false ||
+                strpos($errorMessage, 'UsageCapExceeded') !== false ||
+                strpos($errorMessage, 'Monthly') !== false) {
                 
-                // Check rate limit info and update UI
+                // First, try to extract reset time from error message (TwitterService includes it)
+                $resetTimeFromMessage = null;
+                if (preg_match('/Reset time: ([^\.]+)/', $errorMessage, $matches)) {
+                    $resetTimeFromMessage = trim($matches[1]);
+                }
+                
+                // Check rate limit info from cache (TwitterService should have stored it)
                 $user = Auth::user();
                 if ($user) {
                     $settings = [
@@ -447,18 +480,59 @@ class KeywordMonitoringComponent extends Component
                     ];
                     
                     $twitterService = new TwitterService($settings);
-                    $rateLimitCheck = $twitterService->isRateLimitedForMentions();
+                    $rateLimitCheck = $twitterService->isRateLimitedForSearch();
                     
                     if ($rateLimitCheck['rate_limited']) {
+                        // Use cache data (most reliable)
                         $this->isRateLimited = true;
                         $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
                         $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                        $this->errorMessage = "Rate limit exceeded. Please wait {$rateLimitCheck['wait_minutes']} minute(s) before trying again. Reset time: {$rateLimitCheck['reset_time']}";
+                        
+                        Log::warning('🚫 Rate limit detected from cache after exception (Search)', [
+                            'reset_time' => $rateLimitCheck['reset_time'],
+                            'wait_minutes' => $rateLimitCheck['wait_minutes']
+                        ]);
+                    } elseif ($resetTimeFromMessage) {
+                        // Fallback: use reset time from exception message
+                        $this->isRateLimited = true;
+                        $this->rateLimitResetTime = $resetTimeFromMessage;
+                        // Calculate wait minutes from reset time string
+                        try {
+                            $resetTimestamp = strtotime($resetTimeFromMessage);
+                            if ($resetTimestamp) {
+                                $this->rateLimitWaitMinutes = ceil(($resetTimestamp - time()) / 60);
+                            }
+                        } catch (\Exception $timeEx) {
+                            $this->rateLimitWaitMinutes = 15; // Default fallback
+                        }
+                        $this->errorMessage = "Rate limit exceeded. Reset time: {$resetTimeFromMessage}. Please wait before trying again.";
+                        
+                        Log::warning('🚫 Rate limit detected from exception message (Search)', [
+                            'reset_time' => $resetTimeFromMessage
+                        ]);
+                    } else {
+                        // Generic rate limit message
+                        $this->isRateLimited = true;
+                        $this->rateLimitWaitMinutes = 15; // Default fallback
+                        $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
                     }
+                } else {
+                    $this->isRateLimited = true;
+                    $this->errorMessage = 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
                 }
-                
-                $this->errorMessage = $e->getMessage() ?: 'Rate limit exceeded. Please wait a few minutes before trying again. Twitter API has limits on how many requests can be made.';
             } else {
-                $this->errorMessage = 'Failed to search tweets: ' . $e->getMessage();
+                // Clean up error message - remove URLs and technical details
+                $cleanMessage = $errorMessage;
+                
+                // Remove full URLs
+                $cleanMessage = preg_replace('/https?:\/\/[^\s]+/', '', $cleanMessage);
+                
+                // Remove technical details
+                $cleanMessage = preg_replace('/Client error:.*?response:/', '', $cleanMessage);
+                $cleanMessage = preg_replace('/resulted in a `\d+.*?` response:/', '', $cleanMessage);
+                
+                $this->errorMessage = 'Failed to search tweets: ' . trim($cleanMessage);
             }
         }
 

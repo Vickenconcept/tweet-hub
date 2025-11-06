@@ -79,6 +79,30 @@ class TwitterService
     }
 
     /**
+     * Check if we're currently rate limited for search API calls.
+     */
+    public function isRateLimitedForSearch()
+    {
+        $rateLimitKey = 'twitter_rate_limit_search_' . md5($this->settings['consumer_key'] ?? 'default');
+        $rateLimitInfo = \Illuminate\Support\Facades\Cache::get($rateLimitKey);
+        
+        if ($rateLimitInfo && isset($rateLimitInfo['reset_time'])) {
+            $resetTime = $rateLimitInfo['reset_time'];
+            if ($resetTime > time()) {
+                return [
+                    'rate_limited' => true,
+                    'reset_time' => $rateLimitInfo['reset_datetime'] ?? date('Y-m-d H:i:s', $resetTime),
+                    'wait_minutes' => ceil(($resetTime - time()) / 60),
+                    'remaining' => $rateLimitInfo['remaining'] ?? 0,
+                    'limit' => $rateLimitInfo['limit'] ?? 0
+                ];
+            }
+        }
+        
+        return ['rate_limited' => false];
+    }
+
+    /**
      * Find recent mentions for a user.
      */
     public function getRecentMentions($accountId)
