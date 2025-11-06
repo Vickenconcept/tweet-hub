@@ -1082,11 +1082,20 @@ class TwitterService
                 'tweet_id' => $tweetId,
                 'settings_keys' => array_keys($this->settings),
                 'has_access_token' => !empty($this->settings['access_token']),
+                'account_id' => $this->settings['account_id'] ?? 'not_set',
                 'timestamp' => now()->format('Y-m-d H:i:s')
             ]);
             
-            // Use the client instance (same as retweet and createTweet)
-            return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetId]);
+            // Ensure account_id is set
+            if (empty($this->settings['account_id'])) {
+                throw new \Exception('Account ID is required for liking tweets');
+            }
+            
+            // Twitter API v2 expects tweet_id as a string
+            $tweetIdString = (string) $tweetId;
+            
+            // Use the package method - same pattern as retweet  
+            return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetIdString]);
             
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $response = $e->getResponse();
@@ -1103,16 +1112,26 @@ class TwitterService
                 'error_detail' => $errorData['detail'] ?? null,
                 'error_title' => $errorData['title'] ?? null,
                 'error_type' => $errorData['type'] ?? null,
+                'error_detail_UNESCAPED' => $errorData['detail'] ?? 'NO DETAIL',
                 'settings_keys' => array_keys($this->settings),
                 'has_all_required' => !empty($this->settings['consumer_key']) && 
-                                       !empty($this->settings['consumer_secret']) && 
-                                       !empty($this->settings['access_token']) && 
+                                       !empty($this->settings['consumer_secret']) &&
+                                       !empty($this->settings['access_token']) &&
                                        !empty($this->settings['access_token_secret']),
                 'access_token_length' => strlen($this->settings['access_token'] ?? ''),
                 'access_token_secret_length' => strlen($this->settings['access_token_secret'] ?? '')
             ]);
             
             $errorMessage = $body ?: $e->getMessage();
+            
+            // Return immediately with the parsed error detail
+            return (object) [
+                'data' => [
+                    'liked' => false, 
+                    'message' => "Twitter API error: " . ($errorData['detail'] ?? 'Unknown error')
+                ], 
+                'error' => $errorData['detail'] ?? 'Unknown error'
+            ];
             
         } catch (\Exception $e) {
             Log::error('❌ likeTweet General Error', [

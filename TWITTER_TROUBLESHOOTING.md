@@ -133,15 +133,34 @@ php artisan cache:clear
 tail -f storage/logs/laravel.log
 ```
 
-### 7. When to Contact Support
+### 7. Client Not Enrolled Error (403 Forbidden)
+
+**Problem**: "When authenticating requests to the Twitter API v2 endpoints, you must use keys and tokens from a Twitter developer App that is attached to a Project."
+
+**Solution**:
+1. Go to your [Twitter Developer Portal](https://developer.twitter.com/en/portal),
+2. Create a Project (if you don't have one)
+3. Move your existing App into the Project
+4. Regenerate your API keys and tokens
+5. Update your `.env` file with the new credentials
+
+**Quick Steps**:
+- Visit: https://developer.twitter.com/en/docs/projects/overview
+- Create a Project or attach your App to an existing Project
+- Some endpoints like "Like Tweet" require enrollment in specific API access levels
+
+**Note**: If retweet works but like doesn't, check if you need to upgrade your API access level or enroll in additional endpoints.
+
+### 8. When to Contact Support
 
 Contact support if you experience:
 - Persistent 429 errors even after waiting 15+ minutes
 - Authentication errors that persist after reconnecting
 - API responses that don't match expected format
 - Issues that persist after following all troubleshooting steps
+- Client enrollment errors that persist after updating Developer Portal
 
-### 8. Monitoring and Alerts
+### 9. Monitoring and Alerts
 
 The system automatically:
 - Logs all API calls and errors
@@ -158,4 +177,5 @@ The system automatically:
 - [ ] Run `php artisan twitter:test-mentions`
 - [ ] Check logs for specific errors
 - [ ] Clear cache if needed
-- [ ] Reconnect Twitter account if tokens expired 
+- [ ] Reconnect Twitter account if tokens expired
+- [ ] **If getting "client-not-enrolled" error**: Attach your App to a Project in Twitter Developer Portal 
