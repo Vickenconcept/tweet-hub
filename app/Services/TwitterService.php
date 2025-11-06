@@ -55,115 +55,158 @@ class TwitterService
     }
 
     /**
+     * Check if we're currently rate limited for mentions endpoint
+     */
+    public function isRateLimitedForMentions()
+    {
+        $rateLimitKey = 'twitter_rate_limit_mentions_' . md5($this->settings['consumer_key'] ?? 'default');
+        $rateLimitInfo = \Illuminate\Support\Facades\Cache::get($rateLimitKey);
+        
+        if ($rateLimitInfo && isset($rateLimitInfo['reset_time'])) {
+            $resetTime = $rateLimitInfo['reset_time'];
+            if ($resetTime > time()) {
+                return [
+                    'rate_limited' => true,
+                    'reset_time' => $rateLimitInfo['reset_datetime'] ?? date('Y-m-d H:i:s', $resetTime),
+                    'wait_minutes' => ceil(($resetTime - time()) / 60),
+                    'remaining' => $rateLimitInfo['remaining'] ?? 0,
+                    'limit' => $rateLimitInfo['limit'] ?? 0
+                ];
+            }
+        }
+        
+        return ['rate_limited' => false];
+    }
+
+    /**
      * Find recent mentions for a user.
      */
     public function getRecentMentions($accountId)
     {
-        $maxRetries = config('twitter.rate_limiting.max_retries', 3);
-        $baseDelay = config('twitter.rate_limiting.base_retry_delay', 5);
+        // Check if we're currently rate limited (from previous requests)
+        $rateLimitKey = 'twitter_rate_limit_mentions_' . md5($this->settings['consumer_key'] ?? 'default');
+        $rateLimitInfo = \Illuminate\Support\Facades\Cache::get($rateLimitKey);
+        
+        if ($rateLimitInfo && isset($rateLimitInfo['reset_time'])) {
+            $resetTime = $rateLimitInfo['reset_time'];
+            $now = time();
+            
+            if ($resetTime > $now) {
+                $waitSeconds = $resetTime - $now;
+                $waitMinutes = ceil($waitSeconds / 60);
+                
+                Log::warning('🚫 Rate limit active - preventing API call', [
+                    'account_id' => $accountId,
+                    'reset_time' => date('Y-m-d H:i:s', $resetTime),
+                    'wait_seconds' => $waitSeconds,
+                    'wait_minutes' => $waitMinutes,
+                    'remaining_requests' => $rateLimitInfo['remaining'] ?? 0,
+                    'limit' => $rateLimitInfo['limit'] ?? 0
+                ]);
+                
+                throw new \Exception("Rate limit active. Please wait {$waitMinutes} minute(s) before trying again. Reset time: " . date('Y-m-d H:i:s', $resetTime));
+            }
+        }
 
-        for ($retry = 0; $retry < $maxRetries; $retry++) {
+        try {
+            Log::info('🔴 API CALL: getRecentMentions', [
+                'account_id' => $accountId,
+                'endpoint' => 'timeline/mentions',
+                'timestamp' => now()->format('Y-m-d H:i:s'),
+                'rate_limit_check' => $rateLimitInfo ? 'passed' : 'none'
+            ]);
+            
+            // Make the API call - we need to intercept the response to get rate limit headers
+            // Since the package doesn't expose headers easily, we'll catch the exception
+            $result = $this->client->timeline()->getRecentMentions($accountId)->performRequest();
+            
+            Log::info('✅ Recent mentions fetched successfully', ['account_id' => $accountId]);
+            
+            return $result;
+            
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $response = $e->getResponse();
+            $statusCode = $response->getStatusCode();
+            $body = $response->getBody()->getContents();
+            
+            // Extract rate limit headers
+            $rateLimitRemaining = null;
+            $rateLimitLimit = null;
+            $rateLimitReset = null;
+            
             try {
-                if (config('twitter.logging.log_api_calls', true)) {
-                    Log::info('🔴 API CALL: getRecentMentions', [
+                if ($response->hasHeader('x-rate-limit-remaining')) {
+                    $rateLimitRemaining = (int) $response->getHeaderLine('x-rate-limit-remaining');
+                }
+                if ($response->hasHeader('x-rate-limit-limit')) {
+                    $rateLimitLimit = (int) $response->getHeaderLine('x-rate-limit-limit');
+                }
+                if ($response->hasHeader('x-rate-limit-reset')) {
+                    $rateLimitReset = (int) $response->getHeaderLine('x-rate-limit-reset');
+                }
+            } catch (\Exception $headerEx) {
+                Log::warning('Could not read rate limit headers', ['error' => $headerEx->getMessage()]);
+            }
+            
+            Log::error('❌ Twitter API Error fetching mentions', [
+                'account_id' => $accountId,
+                'status_code' => $statusCode,
+                'rate_limit_remaining' => $rateLimitRemaining,
+                'rate_limit_limit' => $rateLimitLimit,
+                'rate_limit_reset' => $rateLimitReset ? date('Y-m-d H:i:s', $rateLimitReset) : null,
+                'rate_limit_reset_timestamp' => $rateLimitReset,
+                'error_body' => $body,
+                'total_requests_made' => 1
+            ]);
+            
+            // If we got a 429, store rate limit info and DO NOT RETRY
+            if ($statusCode === 429) {
+                if ($rateLimitReset) {
+                    // Store rate limit info in cache until reset time
+                    $cacheUntil = $rateLimitReset + 60; // Cache for 1 minute after reset to be safe
+                    \Illuminate\Support\Facades\Cache::put($rateLimitKey, [
+                        'remaining' => 0,
+                        'limit' => $rateLimitLimit ?? 0,
+                        'reset_time' => $rateLimitReset,
+                        'reset_datetime' => date('Y-m-d H:i:s', $rateLimitReset)
+                    ], $cacheUntil - time());
+                    
+                    $waitMinutes = ceil(($rateLimitReset - time()) / 60);
+                    
+                    Log::error('🚫 RATE LIMIT HIT - DO NOT RETRY', [
                         'account_id' => $accountId,
-                        'endpoint' => 'timeline/mentions',
-                        'retry' => $retry,
-                        'timestamp' => now()->format('Y-m-d H:i:s')
+                        'reset_time' => date('Y-m-d H:i:s', $rateLimitReset),
+                        'wait_minutes' => $waitMinutes,
+                        'rate_limit_limit' => $rateLimitLimit,
+                        'message' => 'Rate limit exceeded. Stored in cache to prevent further requests.'
                     ]);
                 }
                 
-                $result = $this->client->timeline()->getRecentMentions($accountId)->performRequest();
-                
-                if (config('twitter.logging.log_success', false)) {
-                Log::info('Recent mentions fetched successfully', ['account_id' => $accountId]);
-                }
-                
-                return $result;
-            } catch (\GuzzleHttp\Exception\ClientException $e) {
-                $statusCode = $e->getResponse()->getStatusCode();
-                $body = $e->getResponse()->getBody()->getContents();
-                
-                if (config('twitter.logging.log_errors', true)) {
-                Log::error('Twitter API Error fetching mentions', [
-                    'account_id' => $accountId,
-                    'status_code' => $statusCode,
-                    'error_body' => $body,
-                    'retry' => $retry,
-                    'max_retries' => $maxRetries
-                ]);
-                }
-                
-                if ($statusCode === 429 && $retry < $maxRetries - 1) {
-                    // Try to get Retry-After header from response
-                    $retryAfter = null;
-                    try {
-                        $response = $e->getResponse();
-                        if ($response && $response->hasHeader('Retry-After')) {
-                            $retryAfter = (int) $response->getHeaderLine('Retry-After');
-                        } elseif ($response && $response->hasHeader('x-rate-limit-reset')) {
-                            // Fallback to rate limit reset time
-                            $resetTime = (int) $response->getHeaderLine('x-rate-limit-reset');
-                            $retryAfter = max(0, $resetTime - time());
-                        }
-                    } catch (\Exception $headerEx) {
-                        Log::warning('Could not read Retry-After header', ['error' => $headerEx->getMessage()]);
-                    }
-                    
-                    // Use Retry-After if available, otherwise use exponential backoff with jitter
-                    if ($retryAfter !== null && $retryAfter > 0) {
-                        $waitTime = min($retryAfter + rand(1, 5), 300); // Cap at 5 minutes, add jitter
-                        Log::info('Respecting Retry-After header', ['retry_after' => $retryAfter, 'wait_time' => $waitTime]);
-                    } else {
-                        // Exponential backoff with jitter to avoid thundering herd
-                        $waitTime = $baseDelay * pow(2, $retry) + rand(1, 5);
-                        Log::info('Using exponential backoff', ['wait_time' => $waitTime, 'retry' => $retry]);
-                    }
-                    
-                    if (config('twitter.logging.log_rate_limits', true)) {
-                        Log::info('Rate limited, waiting before retry', [
-                            'wait_time' => $waitTime, 
-                            'retry' => $retry,
-                            'status_code' => $statusCode,
-                            'retry_after_header' => $retryAfter
-                        ]);
-                    }
-                    
-                    sleep($waitTime);
-                    continue;
-                }
-                
-                // For other client errors, don't retry
-                if ($statusCode >= 400 && $statusCode < 500 && $statusCode !== 429) {
-                    Log::error('Client error, not retrying', ['status_code' => $statusCode]);
-                    throw $e;
-                }
-                
-                // For server errors (5xx), retry
-                if ($statusCode >= 500 && $retry < $maxRetries - 1) {
-                    $waitTime = $baseDelay * pow(2, $retry);
-                    Log::info('Server error, retrying', ['wait_time' => $waitTime, 'retry' => $retry]);
-                    sleep($waitTime);
-                    continue;
-                }
-                
-                throw $e;
-            } catch (\Exception $e) {
-                Log::error('Unexpected error fetching mentions', [
-                    'account_id' => $accountId,
-                    'error' => $e->getMessage(),
-                    'retry' => $retry
-                ]);
-                
-                if ($retry < $maxRetries - 1) {
-                    $waitTime = $baseDelay * pow(2, $retry);
-                    Log::info('Unexpected error, retrying', ['wait_time' => $waitTime, 'retry' => $retry]);
-                    sleep($waitTime);
-                    continue;
-                }
-                
+                // DO NOT RETRY on 429 - throw immediately
+                throw new \Exception("Rate limit exceeded (429). Reset time: " . ($rateLimitReset ? date('Y-m-d H:i:s', $rateLimitReset) : 'unknown') . ". Please wait before trying again.");
+            }
+            
+            // For other client errors, don't retry
+            if ($statusCode >= 400 && $statusCode < 500) {
                 throw $e;
             }
+            
+            // For server errors (5xx), we could retry, but let's be conservative
+            throw $e;
+            
+        } catch (\Exception $e) {
+            // Re-throw if it's already our custom exception
+            if (strpos($e->getMessage(), 'Rate limit') !== false) {
+                throw $e;
+            }
+            
+            Log::error('❌ Unexpected error fetching mentions', [
+                'account_id' => $accountId,
+                'error' => $e->getMessage(),
+                'class' => get_class($e)
+            ]);
+            
+            throw $e;
         }
     }
 
