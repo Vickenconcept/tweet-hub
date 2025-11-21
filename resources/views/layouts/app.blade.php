@@ -67,7 +67,7 @@
         <x-sidebar />
         
 
-        <div id="main-section" class="h-full sm:ml-64 bg-gray-100/40 pt-16 overflow-y-hidden relative flex ">
+        <div id="main-section" class="h-full sm:ml-64 bg-gray-100/40 pt-16 relative flex ">
         {{-- <div id="main-section" class="h-full sm:ml-64 bg-gray-100 pt-20 overflow-y-hidden relative flex "> --}}
             <div>
                 <button id="toggle-btn"
@@ -76,7 +76,7 @@
                 </button>
             </div>
             <div>
-                <button id="open-chat" onclick="toggleSidebar()"
+                <button id="open-chat" onclick="toggleChatAndCloseSidebar(); return false;"
                     class=" py-2 px-4 text-sm  lg:flex rounded-full cursor-pointer bg-black text-white absolute top-5 right-3 z-40 flex items-center justify-center">
                     <i class='bx  bx-sidebar mr-2 text-xl'  ></i>  open chat
                 </button>
@@ -125,26 +125,93 @@
             chatArea.style.overflow = 'hidden';
             chatArea.style.display = 'none';
 
-            function toggleChat() {
+            // Unified function to toggle chat and manage sidebar
+            window.toggleChatAndCloseSidebar = function() {
+                // Toggle chat state
                 chatOpen = !chatOpen;
+                
+                const logoSidebar = document.getElementById('logo-sidebar');
+                const mainSection = document.getElementById('main-section');
+                
                 if (chatOpen) {
+                    // Open chat - close sidebar
                     chatArea.style.display = 'block';
                     setTimeout(() => {
                         chatArea.style.width = '35%';
                         chatArea.style.opacity = '1';
                     }, 10);
-                    openChatBtn.innerHTML = `<i class='bx bx-sidebar mr-2 text-xl'></i> close chat`;
+                    if (openChatBtn) {
+                        openChatBtn.innerHTML = `<i class='bx bx-sidebar mr-2 text-xl'></i> <span class="chat-text">close chat</span>`;
+                    }
+                    
+                    // Close sidebar when opening chat
+                    if (logoSidebar && mainSection) {
+                        if (!logoSidebar.classList.contains('hidden')) {
+                            logoSidebar.classList.add('hidden');
+                            mainSection.classList.remove('sm:ml-64');
+                        }
+                    }
                 } else {
+                    // Close chat - open sidebar
                     chatArea.style.width = '0';
                     chatArea.style.opacity = '0';
-                    openChatBtn.innerHTML = `<i class='bx bx-sidebar mr-2 text-xl'></i> open chat`;
+                    if (openChatBtn) {
+                        openChatBtn.innerHTML = `<i class='bx bx-sidebar mr-2 text-xl'></i> <span class="chat-text">open chat</span>`;
+                    }
                     setTimeout(() => {
                         chatArea.style.display = 'none';
                     }, 300);
+                    
+                    // Open sidebar when closing chat
+                    if (logoSidebar && mainSection) {
+                        if (logoSidebar.classList.contains('hidden')) {
+                            logoSidebar.classList.remove('hidden');
+                            mainSection.classList.add('sm:ml-64');
+                        }
+                    }
                 }
-            }
-
-            openChatBtn.addEventListener('click', toggleChat);
+                
+                // Update chat menu item state
+                updateChatMenuItemState();
+            };
+            
+            // Function to update chat menu item active state
+            // Note: Chat menu item always stays active (default active state)
+            window.updateChatMenuItemState = function() {
+                const chatMenuItem = document.getElementById('chat-menu-item');
+                const chatMenuIcon = document.getElementById('chat-menu-icon');
+                
+                if (chatMenuItem && chatMenuIcon) {
+                    // Always keep active state - chat button is always selected
+                    chatMenuItem.classList.remove('text-gray-700', 'hover:bg-gray-50');
+                    chatMenuItem.classList.add('bg-green-50', 'text-green-700', 'font-semibold', 'shadow-sm');
+                    chatMenuIcon.classList.remove('bg-gray-100', 'text-gray-500', 'group-hover:bg-gray-200');
+                    chatMenuIcon.classList.add('bg-green-100', 'text-green-600');
+                }
+            };
+            
+            // Initial state update - ensure active state is applied
+            setTimeout(() => {
+                window.updateChatMenuItemState();
+            }, 100);
+            
+            // Observe chat area for external changes
+            const observer = new MutationObserver(function() {
+                // Check actual state from DOM
+                const currentWidth = chatArea.style.width || window.getComputedStyle(chatArea).width;
+                const currentDisplay = chatArea.style.display || window.getComputedStyle(chatArea).display;
+                const isActuallyOpen = currentWidth && currentWidth !== '0px' && currentWidth !== '0' && currentDisplay !== 'none';
+                
+                if (isActuallyOpen !== chatOpen) {
+                    chatOpen = isActuallyOpen;
+                    window.updateChatMenuItemState();
+                }
+            });
+            
+            observer.observe(chatArea, {
+                attributes: true,
+                attributeFilter: ['style']
+            });
         });
     </script>
     @yield('scripts')

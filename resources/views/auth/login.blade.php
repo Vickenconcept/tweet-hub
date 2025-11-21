@@ -1,148 +1,158 @@
- @seo([
-     'title' => 'FluenceGrid',
-     'description' => 'Influencers Management Hub',
-     'image' => asset('images/login-image.png'),
-     'site_name' => config('app.name'),
-     'favicon' => asset('images/fav-image.png'),
- ])
- <x-guest-layout>
-     
+@seo([
+    'title' => 'Tweet Hunt',
+    'description' => 'Social listening & publishing hub',
+    'image' => asset('images/login-image.png'),
+    'site_name' => config('app.name'),
+    'favicon' => asset('images/fav-image.png'),
+])
 
-
-
-
-     <div class="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-        <div class="sm:mx-auto sm:w-full sm:max-w-md">
-            <!-- Logo -->
-            <div class="flex justify-center">
-                <div class="w-20 h-20 bg-black rounded-full flex items-center justify-center">
-                    {{-- <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg> --}}
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-12 text-white">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-                      </svg>
+<x-guest-layout>
+    <div class="min-h-screen bg-[#f2fff4] flex flex-col">
+        <header class="flex items-center justify-between px-6 sm:px-12 py-6">
+            <div class="flex items-center gap-3">
+                <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-[#0b8a3d] to-[#0d5] flex items-center justify-center text-white text-2xl font-semibold">
+                    TH
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500 uppercase tracking-[0.2em]">Welcome Back</p>
+                    <p class="text-xl font-semibold text-gray-900">Tweet-Hunt for X</p>
                 </div>
             </div>
-            <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                Welcome back
-            </h2>
-            <p class="mt-2 text-center text-sm text-gray-600">
-                Please sign in to your account
-            </p>
-            <x-session-msg />
-        </div>
-    
-        <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-            <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-                <form class="space-y-6"  action="{{ route('auth.login') }}" method="post">
-                    @csrf
-                    <div>
-                        <label for="email" class="block text-sm font-medium text-gray-700">
-                            Email address
-                        </label>
-                        <div class="mt-1">
-                            <input id="email" name="email" type="email" autocomplete="email" required 
-                                class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-black/80 focus:border-black/80 sm:text-sm"
-                                placeholder="Enter your email">
-                        </div>
-                    </div>
-    
-                    <div>
-                        <label for="password" class="block text-sm font-medium text-gray-700">
-                            Password
-                        </label>
-                       
-                        <div class="relative mt-1">
-                            <input type="password"
-                                class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-black/80 focus:border-black/80 sm:text-sm"
-                                placeholder="Enter password" name="password" id="password" />
+        </header>
 
+        <div class="flex-1 flex flex-col lg:flex-row gap-10 px-6 sm:px-12 pb-10">
+            <!-- Left column -->
+            <div class="w-full lg:w-[480px] flex items-center">
+                <div class="w-full bg-white rounded-[32px] shadow-xl shadow-[#0d5]/[0.08] p-8 sm:p-10 relative overflow-hidden">
+                    <div class="absolute -top-12 -right-12 h-32 w-32 rounded-full bg-[#ecffe5] blur-[60px]"></div>
+                    <div class="absolute -bottom-8 -left-10 h-28 w-28 rounded-full bg-[#d1ffea] blur-[40px]"></div>
 
-                            <button type="button" onclick="showPassword()"
-                                class="text-gray-500 cursor-pointer hover:text-gray-700 absolute end-2.5 bottom-1  font-medium rounded-lg text-sm  py-.5">
-                                <i class="bx bx-show-alt text-2xl" id="show"></i>
-                                <i class="bx bx-hide text-2xl" id="hide"
-                                    style="display: none"></i>
-                            </button>
-                        </div>
-                    </div>
-    
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center">
-                            <input id="remember-me" name="remember-me" type="checkbox" 
-                                class="h-4 w-4 text-black focus:ring-black/80 border-gray-300 rounded">
-                            <label for="remember-me" class="ml-2 block text-sm text-gray-900">
-                                Remember me
-                            </label>
-                        </div>
-    
-                        <div class="text-sm">
-                            <a href="{{ route('password.request') }}" class="font-medium text-black hover:text-black/80">
-                                Forgot your password?
-                            </a>
-                        </div>
-                    </div>
-    
-                    <div>
-                        <button type="submit" 
-                            class="w-full cursor-pointer flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-black hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black/80">
-                            <span>
-                                <span id="hiddenText" class="hidden">
-                                    <i class='bx bx-loader-alt animate-spin'></i>
+                    <p class="text-sm font-semibold text-[#0b8a3d] uppercase tracking-[0.3em]">Login</p>
+                    <h1 class="mt-2 text-3xl sm:text-[2.5rem] font-semibold text-gray-900 leading-snug">
+                        Rejoin your command center.
+                    </h1>
+                    {{-- <p class="mt-3 text-gray-500 text-sm">
+                        Sign in to sync mentions, generate on-brand tweets, and keep competitor intelligence streaming into Tweet-Hunt.
+                    </p> --}}
+                    <x-session-msg class="mt-4" />
+
+                    <form class="mt-8 space-y-6" action="{{ route('auth.login') }}" method="POST">
+                        @csrf
+                        <div>
+                            <label for="email" class="text-sm font-semibold text-gray-800">Email</label>
+                            <div class="mt-2 relative">
+                                <span class="absolute left-4 inset-y-0 flex items-center text-[#0b8a3d]">
+                                    <i class='bx bx-envelope text-lg'></i>
                                 </span>
-                                <span>Sign in </span>
-                            </span>
-                        </button>
-                    </div>
-                </form>
-    
-                {{-- <div class="mt-6">
-                    <div class="relative">
-                        <div class="absolute inset-0 flex items-center">
-                            <div class="w-full border-t border-gray-300"></div>
+                                <input id="email" name="email" type="email" autocomplete="email" required
+                                    class="w-full rounded-2xl border border-gray-200 pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0b8a3d] focus:border-transparent placeholder:text-gray-400"
+                                    placeholder="you@tweet-hunt.com">
+                            </div>
                         </div>
-                        <div class="relative flex justify-center text-sm">
-                            <span class="px-2 bg-white text-gray-500">
-                                Or continue with
-                            </span>
+
+                        <div>
+                            <label for="password" class="text-sm font-semibold text-gray-800">Password</label>
+                            <div class="mt-2 relative">
+                                <span class="absolute left-4 inset-y-0 flex items-center text-[#0b8a3d]">
+                                    <i class='bx bx-lock-alt text-lg'></i>
+                                </span>
+                                <input type="password" name="password" id="password"
+                                    class="w-full rounded-2xl border border-gray-200 pl-12 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0b8a3d] focus:border-transparent placeholder:text-gray-400"
+                                    placeholder="****************">
+                                <button type="button" onclick="showPassword()"
+                                    class="absolute right-4 inset-y-0 flex items-center text-gray-400 hover:text-gray-600 transition-colors">
+                                    <i class="bx bx-show-alt text-2xl" id="show-icon" style="display: block;"></i>
+                                    <i class="bx bx-hide text-2xl" id="hide-icon" style="display: none;"></i>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-    
-                    <div class="mt-6 grid grid-cols-2 gap-3">
-                        <button type="button" 
-                            class="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M6.29 18.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0020 3.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.073 4.073 0 01.8 7.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 010 16.407a11.616 11.616 0 006.29 1.84"/>
+
+                        <div class="flex items-center justify-between text-sm">
+                            <label class="flex items-center gap-2 text-gray-600">
+                                <input type="checkbox" name="remember-me" class="rounded border-gray-300 text-[#0b8a3d] focus:ring-[#0b8a3d]">
+                                Keep me logged in on this device
+                            </label>
+                            <a href="{{ route('password.request') }}" class="font-semibold text-[#0b8a3d] hover:text-[#087630]">Forgot password?</a>
+                        </div>
+
+                        <button type="submit"
+                            class="w-full flex items-center justify-center gap-2 bg-[#0b8a3d] text-white text-sm font-semibold py-3 rounded-2xl shadow-lg shadow-[#0b8a3d]/30 transition hover:bg-[#0a7c36]">
+                            <span id="hiddenText" class="hidden">
+                                <i class='bx bx-loader-alt animate-spin text-lg'></i>
+                            </span>
+                            <span>Continue to dashboard</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14m-7-7l7 7-7 7" />
                             </svg>
                         </button>
-    
-                        <button type="button" 
-                            class="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"/>
-                            </svg>
-                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right column hero -->
+            <div class="flex-1 relative bg-gradient-to-br from-[#0d5f3f] via-[#0da85a] to-[#0dca6c] rounded-[40px] overflow-hidden min-h-[480px]">
+                <div class="absolute inset-0 opacity-20 bg-[url('data:image/svg+xml,%3Csvg width=%27120%27 height=%27120%27 viewBox=%270 0 120 120%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Crect width=%27120%27 height=%27120%27 fill=%27none%27 stroke=%27%23000000%27 stroke-opacity=%270.1%27 stroke-width=%270.5%27/%3E%3C/svg%3E')]"></div>
+
+                <div class="absolute top-10 left-12 bg-white/10 border border-white/30 rounded-2xl px-5 py-3 text-white backdrop-blur">
+                    <p class="text-xs uppercase tracking-[0.4em]">MENTIONS</p>
+                    <p class="text-2xl font-semibold">36k+</p>
+                    <p class="text-sm opacity-80">Live notifications on X</p>
+                </div>
+
+                <div class="absolute top-10 right-10 bg-white/90 rounded-[24px] p-4 shadow-2xl w-72">
+                    <div class="flex items-center gap-3">
+                        <div class="h-12 w-12 rounded-2xl bg-[#ffeeda] flex items-center justify-center">
+                            <span class="text-lg font-semibold text-[#ff9f1c]">$</span>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Trending hashtag</p>
+                            <p class="text-xl font-semibold text-gray-900">#LaunchDay</p>
+                        </div>
                     </div>
-                </div> --}}
+                    <p class="mt-3 text-xs text-gray-500 uppercase tracking-[0.3em]">Insights</p>
+                </div>
+
+                <div class="absolute bottom-10 left-10 bg-white rounded-[28px] shadow-2xl w-80 p-5 flex flex-col gap-3">
+                    <div class="flex items-center gap-3">
+                        <img src="https://i.pravatar.cc/80?img=23" alt="avatar" class="h-12 w-12 rounded-2xl object-cover">
+                        <div>
+                            <p class="text-base font-semibold text-gray-900">Creator Spotlight</p>
+                            <p class="text-sm text-gray-500">Top thread this hour</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs font-medium text-gray-600">
+                        <span class="px-3 py-1 rounded-full bg-[#f2fff4] text-[#088c41]">mentions</span>
+                        <span class="px-3 py-1 rounded-full bg-[#f2f8ff] text-[#1c7ed6]">DMs</span>
+                        <span class="px-3 py-1 rounded-full bg-[#fff7e6] text-[#f08c00]">lists</span>
+                    </div>
+                </div>
+
+                <div class="absolute bottom-6 right-8 bg-black/70 rounded-2xl px-5 py-4 text-white">
+                    <p class="text-xs uppercase tracking-[0.4em] text-white/80">Analytics</p>
+                    <p class="text-2xl font-semibold">+128%</p>
+                    <p class="text-sm text-white/70">Engagement vs last week</p>
+                </div>
             </div>
         </div>
     </div>
 
-     <script>
-         function showPassword() {
-             var passwordField = document.getElementById('password');
-             var show = document.getElementById('show');
-             var hide = document.getElementById('hide');
-             if (passwordField.type === 'password') {
-                 passwordField.type = 'text';
-                 show.style.display = 'none'
-                 hide.style.display = 'block'
-             } else {
-                 passwordField.type = 'password';
-                 show.style.display = 'block'
-                 hide.style.display = 'none'
-             }
-         }
-     </script>
- </x-guest-layout>
+    <script>
+        function showPassword() {
+            const passwordField = document.getElementById('password');
+            const showIcon = document.getElementById('show-icon');
+            const hideIcon = document.getElementById('hide-icon');
+            
+            if (passwordField && showIcon && hideIcon) {
+                if (passwordField.type === 'password') {
+                    passwordField.type = 'text';
+                    showIcon.style.display = 'none';
+                    hideIcon.style.display = 'block';
+                } else {
+                    passwordField.type = 'password';
+                    showIcon.style.display = 'block';
+                    hideIcon.style.display = 'none';
+                }
+            }
+        }
+    </script>
+</x-guest-layout>

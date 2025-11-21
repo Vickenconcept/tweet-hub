@@ -1,88 +1,79 @@
-<div class="" x-data="{ init() { setTimeout(() => $wire.loadMentions(false), 3000); } }">
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold text-gray-900">Twitter Mentions</h2>
-        <div class="flex items-center gap-3">
-            @if($lastRefresh)
-                <span class="text-sm text-gray-500">Last updated: {{ $lastRefresh }}</span>
-            @endif
-            @if($isRateLimited)
-                <span class="text-sm text-orange-600 font-medium">
-                    Rate Limited - Wait {{ $rateLimitWaitMinutes }} min(s) | Resets: {{ $rateLimitResetTime }}
-                </span>
-            @endif
-            <button type="button"
-                    wire:click="refreshMentions" 
-                    wire:loading.attr="disabled"
-                    @if($isRateLimited) disabled style="pointer-events: none;" @endif
-                    class="px-4 py-2 text-sm font-medium rounded-xl transition-colors
-                           @if($isRateLimited)
-                               text-gray-400 bg-gray-100 cursor-not-allowed opacity-50
-                           @else
-                               text-green-600 bg-gradient-to-r from-green-100 to-green-200 hover:bg-green-200 cursor-pointer
-                           @endif">
-                <i class="bx bx-sync mr-1"></i>
-                <span wire:loading.remove wire:target="refreshMentions">
+<div class="space-y-6" x-data="{ init() { setTimeout(() => $wire.loadMentions(false), 3000); } }">
+    <!-- Header Card -->
+    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+                <p class="text-sm uppercase tracking-[0.4em] text-green-500">X Mentions</p>
+                <h1 class="text-3xl md:text-4xl font-semibold text-gray-900 mt-2">
+                    Twitter Mentions
+                </h1>
+                <p class="text-gray-500 mt-2 text-sm md:text-base">
                     @if($isRateLimited)
-                        Rate Limited
+                        <i class="bx bx-error-circle mr-1 text-orange-600"></i>
+                        Rate Limited - Wait {{ $rateLimitWaitMinutes }} min(s) | Resets: {{ $rateLimitResetTime }}
+                    @elseif($lastRefresh)
+                        <i class="bx bx-check-circle mr-1 text-green-600"></i>
+                        Last updated: {{ $lastRefresh }}
                     @else
-                        Sync Fresh Data
+                        <i class="bx bx-info-circle mr-1 text-blue-600"></i>
+                        Monitor mentions of your X account
                     @endif
-                </span>
-                <span wire:loading wire:target="refreshMentions">Syncing...</span>
-            </button>
-
+                </p>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                <button type="button"
+                        wire:click="refreshMentions" 
+                        wire:loading.attr="disabled"
+                        @if($isRateLimited) disabled style="pointer-events: none;" onclick="return false;" @endif
+                        class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-gray-200 text-sm font-semibold transition-colors
+                               @if($isRateLimited)
+                                   text-gray-400 bg-gray-100 cursor-not-allowed opacity-50
+                               @else
+                                   text-gray-700 hover:border-gray-300
+                               @endif">
+                    <i class="bx bx-sync text-lg"></i>
+                    <span wire:loading.remove wire:target="refreshMentions">
+                        @if($isRateLimited)
+                            Rate Limited
+                        @else
+                            Sync Fresh Data
+                        @endif
+                    </span>
+                    <span wire:loading wire:target="refreshMentions">Syncing...</span>
+                </button>
+            </div>
         </div>
     </div>
 
     <!-- Success/Error Messages -->
     @if($successMessage)
-        <div class="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-xl shadow-sm" 
+        <div class="bg-white rounded-3xl shadow-sm border border-green-200 p-4" 
              x-data="{ show: true }" 
              x-show="show" 
              x-init="setTimeout(() => { show = false; $wire.clearSuccessMessage(); }, 4000)">
-            <div class="flex items-start justify-between">
-                <div class="flex items-start">
-                    <i class="bx bx-check-circle text-xl mr-2 mt-0.5 text-green-600"></i>
-                    <div>
-                        <p class="font-medium text-lg">{{ $successMessage }}</p>
-                        <p class="text-sm text-green-600 mt-1">Action completed successfully!</p>
-                    </div>
-                </div>
-                <button @click="show = false; $wire.clearSuccessMessage();" class="text-green-600 hover:text-green-800 p-1">
-                    <i class="bx bx-x text-lg"></i>
-                </button>
+            <div class="flex items-center text-green-700">
+                <i class="bx bx-check-circle mr-2 text-lg"></i>
+                <span>{{ $successMessage }}</span>
             </div>
         </div>
     @endif
 
     @if($errorMessage)
-        <div class="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl shadow-sm" 
+        <div class="bg-white rounded-3xl shadow-sm border border-red-200 p-4" 
              x-data="{ show: true }" 
              x-show="show" 
              x-init="setTimeout(() => { show = false; $wire.clearErrorMessage(); }, 10000)">
-            <div class="flex items-start justify-between">
-                <div class="flex items-start flex-1">
-                    <i class="bx bx-error-circle text-xl mr-2 mt-0.5"></i>
-                    <div class="flex-1">
-                        <p class="font-medium text-lg">{{ $errorMessage }}</p>
-                        @if(str_contains($errorMessage, 'Rate limit exceeded'))
-                            <p class="text-sm mt-2 text-red-600">
-                                <i class="bx bx-info-circle mr-1"></i>
-                                Twitter API has rate limits to prevent abuse. Try again in a few minutes.
-                            </p>
-                            <div class="mt-3">
-                                <button wire:click="loadMentions" 
-                                        class="px-4 py-2 text-sm font-medium text-red-700 bg-red-200 rounded-lg hover:bg-red-300 transition-colors cursor-pointer">
-                                    <i class="bx bx-refresh mr-1"></i>
-                                    Try Again
-                                </button>
-                            </div>
-                        @endif
-                    </div>
+            <div class="flex items-start">
+                <i class="bx bx-error-circle mr-2 text-lg text-red-600"></i>
+                <div class="flex-1">
+                    <p class="text-red-700">{{ $errorMessage }}</p>
+                    @if(str_contains($errorMessage, 'Rate limit exceeded'))
+                        <p class="text-sm mt-2 text-red-600">
+                            <i class="bx bx-info-circle mr-1"></i>
+                            Twitter API has rate limits to prevent abuse. Try again in a few minutes.
+                        </p>
+                    @endif
                 </div>
-                <button @click="show = false; $wire.clearErrorMessage();" class="text-red-600 hover:text-red-800 p-1 ml-2">
-                    <i class="bx bx-x text-lg"></i>
-                </button>
             </div>
         </div>
     @endif
@@ -91,13 +82,11 @@
 
     <!-- Loading State -->
     @if($loading)
-        <div class="text-center py-12 text-gray-500">
-            <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
-                <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Loading Mentions...</h3>
-                <p class="text-gray-600 mb-4">Fetching your latest Twitter mentions from cache or API</p>
-                <p class="text-xs text-gray-500">This uses cached data when available to avoid rate limits</p>
-            </div>
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-12 text-center">
+            <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-green-600 mb-6"></div>
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">Loading Mentions...</h3>
+            <p class="text-gray-600 mb-4">Fetching your latest Twitter mentions from cache or API</p>
+            <p class="text-xs text-gray-500">This uses cached data when available to avoid rate limits</p>
         </div>
     @elseif(count($mentions) > 0)
         <!-- Mentions List -->
@@ -118,7 +107,7 @@
                     $userMetrics = $user ? (is_object($user) ? ($user->public_metrics ?? null) : ($user['public_metrics'] ?? null)) : null;
                     $followersCount = $userMetrics ? (is_object($userMetrics) ? ($userMetrics->followers_count ?? 0) : ($userMetrics['followers_count'] ?? 0)) : 0;
                 @endphp
-                <div class="p-6 rounded-2xl bg-white hover:shadow-blue-100 transition-all duration-500 ease-in-out shadow-2xl shadow-gray-200">
+                <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-all duration-200">
                     <div class="flex items-start gap-3">
                         <div class="flex-shrink-0">
                             @if($userProfileImage)
@@ -126,8 +115,8 @@
                                      alt="{{ $userName }}" 
                                      class="w-12 h-12 rounded-full">
                             @else
-                                <div class="w-12 h-12 bg-gradient-to-r from-blue-100 to-blue-200 rounded-full flex items-center justify-center">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-blue-600">
+                                <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-gray-400">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
                                     </svg>
                                 </div>
@@ -151,16 +140,16 @@
                             <p class="text-gray-800 mb-4 text-md leading-relaxed">{{ $mentionText }}</p>
                             
                             <!-- Action Buttons -->
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2 flex-wrap">
                                 <button wire:click="replyToMention('{{ $mentionId }}')" 
-                                        class="px-4 py-2 text-sm text-blue-600 bg-gradient-to-r from-blue-100 to-blue-200 hover:bg-blue-200 rounded-xl transition-colors cursor-pointer">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 inline mr-1">
+                                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer border border-gray-200">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
                                     </svg>
                                     Reply
                                 </button>
                                 <button wire:click="likeMention('{{ $mentionId }}')" 
-                                        class="like-button px-4 py-2 text-sm text-red-600 bg-gradient-to-r from-red-100 to-red-200 hover:bg-red-200 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden group"
+                                        class="like-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden group border border-red-200"
                                         x-data="{ 
                                             liked: false, 
                                             animating: false,
@@ -178,14 +167,14 @@
                                         @click="likeMention()"
                                         :class="{ 'animate-pulse': animating, 'scale-105': liked }">
                                     <!-- Heart Icon with Animation -->
-                                    <div class="relative inline-flex items-center">
+                                    <div class="relative inline-flex items-center gap-1">
                                         <!-- Empty Heart (default) -->
-                                        <svg x-show="!liked" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1 transition-all duration-300">
+                                        <svg x-show="!liked" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 transition-all duration-300">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
                                         </svg>
                                         
                                         <!-- Filled Heart (when liked) -->
-                                        <svg x-show="liked" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1 transition-all duration-300 animate-bounce text-red-600">
+                                        <svg x-show="liked" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 transition-all duration-300 animate-bounce text-red-600">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
                                         </svg>
                                         
@@ -205,7 +194,7 @@
                                     </div>
                                 </button>
                                 <button wire:click="retweetMention('{{ $mentionId }}')" 
-                                        class="px-4 py-2 text-sm text-green-600 bg-gradient-to-r from-green-100 to-green-200 hover:bg-green-200 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden"
+                                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden border border-green-200"
                                         x-data="{ 
                                             retweeted: false, 
                                             animating: false,
@@ -223,14 +212,14 @@
                                         @click="retweetMention()"
                                         :class="{ 'animate-pulse': animating, 'scale-105': retweeted }">
                                     <!-- Retweet Icon with Animation -->
-                                    <div class="relative inline-flex items-center">
+                                    <div class="relative inline-flex items-center gap-1">
                                         <!-- Default Retweet Icon -->
-                                        <svg x-show="!retweeted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1 transition-all duration-300">
+                                        <svg x-show="!retweeted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 transition-all duration-300">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3" />
                                         </svg>
                                         
                                         <!-- Animated Retweet Icon -->
-                                        <svg x-show="retweeted" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1 transition-all duration-300 animate-spin text-green-600">
+                                        <svg x-show="retweeted" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 transition-all duration-300 animate-spin text-green-600">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3" />
                                         </svg>
                                         
@@ -252,8 +241,8 @@
                                 <a href="https://twitter.com/i/status/{{ $mentionId }}" 
                                    target="_blank" 
                                    rel="noopener noreferrer"
-                                   class="px-4 py-2 text-sm text-purple-600 bg-gradient-to-r from-purple-100 to-purple-200 hover:bg-purple-200 rounded-xl transition-colors inline-flex items-center cursor-pointer">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 mr-1">
+                                   class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer border border-gray-200">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
                                     </svg>
                                     View Tweet
@@ -267,105 +256,106 @@
 
         <!-- Pagination Controls -->
         @if($this->getTotalPages() > 1)
-            <div class="mt-8 flex items-center justify-center">
-                <div class="bg-white rounded-2xl shadow-2xl shadow-gray-200 p-4">
-                    <div class="flex items-center space-x-3">
-                        <!-- Previous Page Button -->
-                        <button wire:click="previousPage" 
-                                wire:loading.attr="disabled"
-                                @if($currentPage <= 1) disabled @endif
-                                class="px-4 py-2 text-sm font-medium text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 inline mr-1">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                            </svg>
-                            Previous
-                        </button>
+            <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+                <div class="flex items-center justify-center space-x-3 mb-4">
+                    <!-- Previous Page Button -->
+                    <button wire:click="previousPage" 
+                            wire:loading.attr="disabled"
+                            @if($currentPage <= 1) disabled @endif
+                            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-xl hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer border border-gray-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                        </svg>
+                        Previous
+                    </button>
 
-                        <!-- Page Numbers -->
-                        <div class="flex items-center space-x-2">
-                            @for($page = 1; $page <= $this->getTotalPages(); $page++)
-                                @if($page == 1 || $page == $this->getTotalPages() || ($page >= $currentPage - 1 && $page <= $currentPage + 1))
-                                    <button wire:click="goToPage({{ $page }})" 
-                                            @if($page == $currentPage) disabled @endif
-                                            class="px-4 py-2 text-sm font-medium rounded-xl transition-colors {{ $page == $currentPage ? 'bg-gradient-to-r from-blue-400 to-blue-600 text-white shadow-2xl shadow-gray-200' : 'text-gray-700 bg-gradient-to-r from-gray-100 to-gray-200 hover:bg-gray-200' }}">
-                                        {{ $page }}
-                                    </button>
-                                @elseif($page == $currentPage - 2 || $page == $currentPage + 2)
-                                    <span class="px-3 py-2 text-gray-400">...</span>
-                                @endif
-                            @endfor
-                        </div>
-
-                        <!-- Next Page Button -->
-                        <button wire:click="nextPage" 
-                                wire:loading.attr="disabled"
-                                @if($currentPage >= $this->getTotalPages()) disabled @endif
-                                class="px-4 py-2 text-sm font-medium text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer">
-                            Next
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 inline ml-1">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                            </svg>
-                        </button>
+                    <!-- Page Numbers -->
+                    <div class="flex items-center space-x-2">
+                        @for($page = 1; $page <= $this->getTotalPages(); $page++)
+                            @if($page == 1 || $page == $this->getTotalPages() || ($page >= $currentPage - 1 && $page <= $currentPage + 1))
+                                <button wire:click="goToPage({{ $page }})" 
+                                        @if($page == $currentPage) disabled @endif
+                                        class="px-4 py-2 text-sm font-medium rounded-xl transition-colors {{ $page == $currentPage ? 'bg-green-600 text-white shadow-sm' : 'text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200' }}">
+                                    {{ $page }}
+                                </button>
+                            @elseif($page == $currentPage - 2 || $page == $currentPage + 2)
+                                <span class="px-3 py-2 text-gray-400">...</span>
+                            @endif
+                        @endfor
                     </div>
 
-                    <!-- Page Info -->
-                    <div class="mt-3 text-center text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-2">
-                        Page {{ $currentPage }} of {{ $this->getTotalPages() }}
-                        <span class="text-gray-400 mx-2">•</span>
-                        Showing {{ count($this->getPaginatedMentions()) }} of {{ count($mentions) }} mentions
-                    </div>
+                    <!-- Next Page Button -->
+                    <button wire:click="nextPage" 
+                            wire:loading.attr="disabled"
+                            @if($currentPage >= $this->getTotalPages()) disabled @endif
+                            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-xl hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer border border-gray-200">
+                        Next
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Page Info -->
+                <div class="text-center text-sm text-gray-600">
+                    Page {{ $currentPage }} of {{ $this->getTotalPages() }}
+                    <span class="text-gray-400 mx-2">•</span>
+                    Showing {{ count($this->getPaginatedMentions()) }} of {{ count($mentions) }} mentions
                 </div>
             </div>
         @endif
     @else
         <!-- Empty State -->
-        <div class="text-center py-12 text-gray-500">
-            <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
-                <i class="bx bx-at text-6xl mb-6 text-blue-500"></i>
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">No Mentions Found</h3>
-                <p class="text-gray-600 mb-4">You don't have any mentions yet</p>
-                <p class="text-xs text-gray-500">Mentions will appear here when someone mentions your account</p>
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-12 text-center">
+            <div class="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full mb-6">
+                <i class="bx bx-at text-4xl text-gray-400"></i>
             </div>
+            <h3 class="text-xl font-semibold text-gray-700 mb-2">No Mentions Found</h3>
+            <p class="text-gray-600 mb-1">You don't have any mentions yet</p>
+            <p class="text-sm text-gray-500">Mentions will appear here when someone mentions your account</p>
         </div>
     @endif
 
     <!-- Reply Modal -->
     @if($showReplyModal && $selectedMention)
-        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-2xl p-8 w-full max-w-lg mx-4 shadow-2xl shadow-gray-200">
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-3xl p-8 w-full max-w-lg shadow-xl">
                 <div class="flex items-center mb-6">
-                    <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center mr-3">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-blue-600">
+                    <div class="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center mr-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 text-green-600">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
                         </svg>
                     </div>
-                    <h3 class="text-xl font-semibold text-gray-900">Reply to Mention</h3>
+                    <div>
+                        <p class="text-sm uppercase tracking-[0.2em] text-gray-400">Reply</p>
+                        <h3 class="text-2xl font-semibold text-gray-900">Reply to Mention</h3>
+                    </div>
                 </div>
                 
-                <div class="mb-6 p-4 bg-gray-50 rounded-xl">
-                    <p class="text-sm text-gray-600 mb-2 font-medium">Replying to:</p>
-                    <p class="text-gray-800 text-lg leading-relaxed">{{ $selectedMention->text ?? 'No content' }}</p>
+                <div class="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                    <p class="text-sm text-gray-600 mb-2 font-semibold">Replying to:</p>
+                    <p class="text-gray-800 text-sm leading-relaxed">{{ $selectedMention->text ?? 'No content' }}</p>
                 </div>
 
                 <div class="mb-8">
-                    <label for="replyContent" class="block text-sm font-medium text-gray-700 mb-3">Your Reply</label>
-                    <textarea wire:model="replyContent" id="replyContent" rows="4"
-                              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
+                    <label for="replyContent" class="block text-sm font-semibold text-gray-800 mb-2">Your Reply</label>
+                    <textarea wire:model="replyContent" id="replyContent" rows="5"
+                              class="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm"
                               placeholder="Type your reply..."></textarea>
                     <div class="text-right mt-2">
-                        <span class="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-lg">{{ strlen($replyContent) }}/280</span>
+                        <span class="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-xl">{{ strlen($replyContent) }}/280</span>
                     </div>
                 </div>
 
-                <div class="flex gap-4">
+                <div class="flex gap-3">
                     <button wire:click="sendReply" 
                             wire:loading.attr="disabled"
-                            class="flex-1 px-6 py-3 bg-gradient-to-r from-blue-400 to-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors cursor-pointer shadow-2xl shadow-gray-200">
+                            class="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-2xl hover:bg-green-700 disabled:opacity-50 transition-colors cursor-pointer shadow-sm">
                         <span wire:loading.remove>Send Reply</span>
                         <span wire:loading>Sending...</span>
                     </button>
                     <button wire:click="cancelReply" 
-                            class="flex-1 px-6 py-3 bg-gradient-to-r from-gray-400 to-gray-600 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors cursor-pointer">
+                            class="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-2xl hover:bg-gray-200 transition-colors cursor-pointer">
                         Cancel
                     </button>
                 </div>

@@ -1,38 +1,45 @@
-<div class="" x-data="generatePostIdeas()">
-    <div class="flex items-center justify-between mb-6">
-        <div>
-        <h2 class="text-2xl font-bold text-gray-900">Generate Post Ideas</h2>
-            @if($hasCachedIdeas && count($generatedIdeas) > 0)
-                <p class="text-sm text-green-600 mt-1">
-                    <i class="bx bx-check-circle mr-1"></i>
-                    {{ count($generatedIdeas) }} cached ideas available
-                </p>
-            @endif
-        </div>
-                <div class="flex gap-2">
-            @if($hasCachedIdeas && count($generatedIdeas) > 0)
-                <button wire:click="clearIdeas" class="px-4 py-2 text-sm font-medium text-red-600 bg-gradient-to-r from-red-100 to-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer">
-                    <i class="bx bx-trash mr-1"></i>
-                    Clear Cache
+<div class="space-y-6" x-data="generatePostIdeas()">
+    <!-- Header Card -->
+    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+                <p class="text-sm uppercase tracking-[0.4em] text-green-500">AI Post Generator</p>
+                <h1 class="text-3xl md:text-4xl font-semibold text-gray-900 mt-2">
+                    Generate Tweet Ideas
+                </h1>
+                @if($hasCachedIdeas && count($generatedIdeas) > 0)
+                    <p class="text-gray-500 mt-2 text-sm md:text-base">
+                        <i class="bx bx-check-circle mr-1 text-green-600"></i>
+                        {{ count($generatedIdeas) }} cached ideas available
+                    </p>
+                @endif
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                @if($hasCachedIdeas && count($generatedIdeas) > 0)
+                    <button wire:click="clearIdeas" class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-red-200 text-sm font-semibold text-red-600 hover:border-red-300">
+                        <i class='bx bx-trash text-lg'></i> Clear Cache
+                    </button>
+                @endif
+                <button wire:click="clearIdeas" class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200">
+                    <i class='bx bx-trash text-lg'></i> Clear All
                 </button>
-            @endif
-            <button wire:click="clearIdeas" class="px-4 py-2 text-sm font-medium text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer">
-            Clear All
-        </button>
+            </div>
         </div>
     </div>
 
     <!-- Tabs -->
-    <div class="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-xl">
-        <button wire:click="setTab('generate')" 
-                class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer {{ $activeTab === 'generate' ? 'bg-white text-blue-600 shadow-2xl shadow-gray-200' : 'text-gray-600 hover:text-gray-900' }}">
-            Generate Ideas
-        </button>
-        <button wire:click="setTab('favorites')" 
-                x-on:click="onTabChange()"
-                class="flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer {{ $activeTab === 'favorites' ? 'bg-white text-blue-600 shadow-2xl shadow-gray-200' : 'text-gray-600 hover:text-gray-900' }}">
-            Favorites
-        </button>
+    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-2">
+        <div class="flex space-x-1">
+            <button wire:click="setTab('generate')" 
+                    class="flex-1 px-4 py-3 text-sm font-medium rounded-2xl transition-all duration-200 cursor-pointer {{ $activeTab === 'generate' ? 'bg-green-50 text-green-700 font-semibold shadow-sm' : 'text-gray-600 hover:bg-gray-50' }}">
+                Generate Ideas
+            </button>
+            <button wire:click="setTab('favorites')" 
+                    x-on:click="onTabChange()"
+                    class="flex-1 px-4 py-3 text-sm font-medium rounded-2xl transition-all duration-200 cursor-pointer {{ $activeTab === 'favorites' ? 'bg-green-50 text-green-700 font-semibold shadow-sm' : 'text-gray-600 hover:bg-gray-50' }}">
+                Favorites
+            </button>
+        </div>
     </div>
 
     <!-- Success/Error Messages -->
@@ -46,34 +53,42 @@
     @endif --}}
 
     @if($errorMessage)
-        <div class="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl">
-            {{ $errorMessage }}
+        <div class="bg-white rounded-3xl shadow-sm border border-red-200 p-4">
+            <div class="flex items-center text-red-700">
+                <i class="bx bx-error-circle mr-2"></i>
+                <span>{{ $errorMessage }}</span>
+            </div>
         </div>
     @endif
 
     <!-- Input Form -->
     @if($activeTab === 'generate')
         @if($hasCachedIdeas && count($generatedIdeas) > 0)
-            <div class="mb-4 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl">
-                <div class="flex items-center">
+            <div class="bg-white rounded-3xl shadow-sm border border-blue-200 p-4">
+                <div class="flex items-center text-blue-700">
                     <i class="bx bx-info-circle text-xl mr-2"></i>
-                    <span>You have {{ count($generatedIdeas) }} cached ideas. Generate new ones below or view them in the results section.</span>
+                    <span class="text-sm">You have {{ count($generatedIdeas) }} cached ideas. Generate new ones below or view them in the results section.</span>
                 </div>
             </div>
         @endif
-        <div class="mb-6 p-6 bg-white rounded-xl shadow-2xl shadow-gray-200">
-            <div class="mb-4">
-                <label for="prompt" class="block text-sm font-medium text-gray-700 mb-2">Describe what you want to post about</label>
-                <textarea wire:model="prompt" id="prompt" rows="3"
-                          class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
+            <div class="mb-6">
+                <p class="text-sm uppercase tracking-[0.3em] text-gray-400">Generator Settings</p>
+                <h3 class="text-2xl font-semibold text-gray-900 mt-2">Create Custom Tweet Ideas</h3>
+            </div>
+            
+            <div class="mb-6">
+                <label for="prompt" class="block text-sm font-semibold text-gray-800 mb-2">Describe what you want to post about</label>
+                <textarea wire:model="prompt" id="prompt" rows="4"
+                          class="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm resize-none"
                           placeholder="e.g., I want to share tips about productivity for remote workers..."></textarea>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
-                    <label for="ideaType" class="block text-sm font-medium text-gray-700 mb-2">Content Type</label>
+                    <label for="ideaType" class="block text-sm font-semibold text-gray-800 mb-2">Content Type</label>
                     <select wire:model="ideaType" id="ideaType" 
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg">
+                            class="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm">
                         <option value="general">General</option>
                         <option value="educational">Educational</option>
                         <option value="entertaining">Entertaining</option>
@@ -82,34 +97,23 @@
                     </select>
                 </div>
                 <div>
-                    <label for="tone" class="block text-sm font-medium text-gray-700 mb-2">Tone</label>
+                    <label for="tone" class="block text-sm font-semibold text-gray-800 mb-2">Tone</label>
                     <select wire:model="tone" id="tone" 
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg">
+                            class="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm">
                         <option value="professional">Professional</option>
                         <option value="casual">Casual</option>
                         <option value="humorous">Humorous</option>
                         <option value="formal">Formal</option>
                     </select>
                 </div>
-                {{-- <div>
-                    <label for="platform" class="block text-sm font-medium text-gray-700 mb-2">Platform</label>
-                    <select wire:model="platform" id="platform" 
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg">
-                        <option value="twitter">Twitter/X</option>
-                        <option value="instagram">Instagram</option>
-                        <option value="linkedin">LinkedIn</option>
-                        <option value="facebook">Facebook</option>
-                    </select>
-                </div> --}}
             </div>
 
             <button wire:click="generatePostIdeas" 
                     wire:loading.attr="disabled"
-                    class="w-full px-6 py-3 bg-gradient-to-r from-blue-400 to-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xl shadow-gray-200 flex items-center justify-center">
-                <i class="bx bx-refresh mr-2"></i>
-                <span wire:loading.remove  wire:target="generatePostIdeas">Generate Post Ideas</span>
+                    class="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-2xl hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-green-200">
+                <i class="bx bx-refresh text-lg"></i>
+                <span wire:loading.remove wire:target="generatePostIdeas">Generate Post Ideas</span>
                 <span wire:loading wire:target="generatePostIdeas">Generating...</span>
-                
             </button>
         </div>
     @endif
@@ -157,42 +161,50 @@
             </div>
         </div>
     @elseif($activeTab === 'generate' && !$loading)
-        <div class="text-center py-12 text-gray-500">
-            <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
-                <i class="bx bx-edit text-6xl mb-6 text-blue-500"></i>
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Ready to Generate Ideas!</h3>
-                <p class="text-gray-600 mb-4">Describe what you want to post about to generate creative ideas</p>
-                <p class="text-xs text-gray-500 mt-4">Ideas will appear here once generated</p>
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-12 text-center">
+            <div class="w-16 h-16 bg-green-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <i class="bx bx-edit text-3xl text-green-600"></i>
             </div>
+            <h3 class="text-2xl font-semibold text-gray-900 mb-3">Ready to Generate Ideas!</h3>
+            <p class="text-gray-500 mb-6">Describe what you want to post about to generate creative ideas</p>
+            <p class="text-xs text-gray-400">Ideas will appear here once generated</p>
         </div>
     @endif
 
     <!-- Favorites Tab -->
     @if($activeTab === 'favorites')
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-900">Favorite Ideas</h3>
-                <button x-on:click="loadFavorites(); renderFavorites();" 
-                        class="px-3 py-1 text-sm text-blue-600 bg-blue-100 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer">
-                    <i class="bx bx-refresh mr-1"></i> Refresh
-                </button>
+        <div class="space-y-6">
+            <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm uppercase tracking-[0.3em] text-gray-400">Saved Ideas</p>
+                        <h3 class="text-2xl font-semibold text-gray-900 mt-2">Favorite Ideas</h3>
+                    </div>
+                    <button x-on:click="loadFavorites(); renderFavorites();" 
+                            class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 border border-gray-200 rounded-2xl hover:border-gray-300 transition-colors">
+                        <i class="bx bx-refresh text-lg"></i> Refresh
+                    </button>
+                </div>
             </div>
-            <div id="favorites-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div id="favorites-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- Favorites will be loaded here via JavaScript -->
             </div>
-            <div id="no-favorites" class="text-center py-8 text-gray-500" style="display: none;">
-                <i class="bx bx-star text-4xl mb-4"></i>
-                <p>No favorite ideas yet</p>
-                <p class="text-sm">Star ideas from the Generate Ideas tab to save them here</p>
+            <div id="no-favorites" class="bg-white rounded-3xl shadow-sm border border-gray-100 p-12 text-center" style="display: none;">
+                <div class="w-16 h-16 bg-amber-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                    <i class="bx bx-star text-3xl text-amber-500"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-2">No favorite ideas yet</h3>
+                <p class="text-gray-500 text-sm">Star ideas from the Generate Ideas tab to save them here</p>
             </div>
         </div>
     @endif
 
     <!-- Loading State -->
     @if($loading)
-        <div class="text-center py-8">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p class="mt-2 text-gray-600">Generating post ideas...</p>
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-12 text-center">
+            <div class="inline-block animate-spin rounded-full h-16 w-16 border-4 border-green-200 border-t-green-600 mb-6"></div>
+            <h3 class="text-2xl font-semibold text-gray-900 mb-3">Generating Post Ideas...</h3>
+            <p class="text-gray-500">Creating creative content based on your input</p>
         </div>
     @endif
 </div>
@@ -298,29 +310,23 @@ function generatePostIdeas() {
             if (noFavorites) noFavorites.style.display = 'none';
             
             container.innerHTML = this.favorites.map((favorite, index) => `
-                <div class="p-4 rounded-2xl bg-white hover:bg-gray-50 transition-colors shadow-2xl shadow-gray-200">
-                    <div class="flex items-start justify-between mb-3">
-                        <span class="inline-block w-6 h-6 bg-yellow-100 text-yellow-600 text-sm font-medium rounded-full text-center">
+                <div class="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200">
+                    <div class="flex items-start justify-between mb-4">
+                        <span class="inline-flex items-center justify-center w-8 h-8 bg-amber-50 text-amber-600 text-sm font-semibold rounded-2xl">
                             ${index + 1}
                         </span>
                         <button onclick="window.generatePostIdeasInstance.removeFavorite('${favorite.id}')" 
                                 class="text-red-500 hover:text-red-600 transition-colors cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                            </svg>
+                            <i class="bx bx-trash text-xl"></i>
                         </button>
                     </div>
-                    <p class="text-gray-800 mb-4" style="display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden;">${favorite.content}</p>
-                    <div class="flex gap-2">
-                        <button onclick="window.generatePostIdeasInstance.editFavoriteInChatFromButton(this)" 
-                                data-content="${favorite.content.replace(/"/g, '&quot;')}"
-                                class="w-full px-3 py-2 text-sm font-medium text-green-600 bg-gradient-to-r from-green-100 to-green-200 rounded-xl hover:bg-green-200 transition-colors flex items-center cursor-pointer">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                            </svg>
-                            <span class="ml-2">Edit in Chat</span>
-                        </button>
-                    </div>
+                    <p class="text-gray-700 mb-4 text-sm leading-relaxed" style="display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden;">${favorite.content}</p>
+                    <button onclick="window.generatePostIdeasInstance.editFavoriteInChatFromButton(this)" 
+                            data-content="${favorite.content.replace(/"/g, '&quot;')}"
+                            class="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-green-600 bg-green-50 rounded-2xl hover:bg-green-100 transition-colors">
+                        <i class="bx bx-edit text-lg"></i>
+                        Edit in Chat
+                    </button>
                 </div>
             `).join('');
         },

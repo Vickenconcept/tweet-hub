@@ -1,6 +1,6 @@
 <x-app-layout>
-    <div class="p-6 h-screen overflow-y-auto pb-24">
-        <div class="max-w-4xl mx-auto">
+    <div class="bg-[#f5f7fb] min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-6xl mx-auto">
             <livewire:keyword-monitoring-component />
         </div>
     </div>

@@ -1,6 +1,6 @@
 <x-app-layout>
-    <div class="p-6 h-screen pb-32 overflow-y-auto scrollbar-hiddens">
-        <div class="max-w-4xl mx-auto">
+    <div class="min-h-screen bg-[#f5f7fb]">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
             <livewire:daily-post-ideas-component />
         </div>
     </div>
