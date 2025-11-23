@@ -26,9 +26,10 @@
             <ul class="font-medium flex flex-col gap-1.5">
                 <li>
                     <a href="javascript:void(0)" id="chat-menu-item" onclick="if(window.toggleChatAndCloseSidebar) window.toggleChatAndCloseSidebar(); return false;"
-                        class="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 group bg-green-50 text-green-700 font-semibold shadow-sm">
+                        class="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 group bg-green-600 text-white font-semibold shadow-sm">
                         <div id="chat-menu-icon" class="p-1.5 rounded-xl bg-green-100 text-green-600 transition-all duration-200">
-                            <i class="bx bx-message-rounded-dots text-lg"></i>
+                            {{-- <i class="bx bx-message-rounded-dots text-lg"></i> --}}
+                            <i class="bx bx-chat text-lg"></i>
                         </div>
                         <span class="text-sm">Chat</span>
                     </a>
@@ -55,7 +56,7 @@
                     <a href="{{ route('generate-post-ideas') }}"
                         class="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 group {{ request()->routeIs('generate-post-ideas') ? 'bg-green-50 text-green-700 font-semibold shadow-sm' : 'text-gray-700 hover:bg-gray-50' }}">
                         <div class="p-1.5 rounded-xl {{ request()->routeIs('generate-post-ideas') ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200' }} transition-all duration-200">
-                            <i class="bx bx-magic-wand text-lg"></i>
+                            <i class="bx bx-brain text-lg"></i>
                         </div>
                         <span class="text-sm">Generate Ideas</span>
                     </a>

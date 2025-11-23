@@ -59,6 +59,12 @@
 </head>
 
 <body class="h-screen font-['Poppins'] ">
+    <div class="fixed w-full z-50">
+        <button id="open-chat" onclick="toggleChatAndCloseSidebar(); return false;"
+            class=" py-2 px-4 text-sm  lg:flex rounded-full cursor-pointer bg-green-500 text-white absolute top-5 right-3 z-40 flex items-center justify-center">
+            <i class='bx  bx-sidebar mr-2 text-xl'  ></i>  open chat
+        </button>
+    </div>
     <x-preloader />
     <div id="app" class="h-full  text-gray-700 ">
         <x-notification />
@@ -67,20 +73,20 @@
         <x-sidebar />
         
 
-        <div id="main-section" class="h-full sm:ml-64 bg-gray-100/40 pt-16 relative flex ">
+        <div id="main-section" class="h-full sm:ml-64  pt-16 relative flex ">
         {{-- <div id="main-section" class="h-full sm:ml-64 bg-gray-100 pt-20 overflow-y-hidden relative flex "> --}}
-            <div>
+            {{-- <div>
                 <button id="toggle-btn"
                     class=" p-2 hidden lg:flex rounded-r-md cursor-pointer bg-black text-white absolute top-5 -left-3 z-40 flex items-center justify-center">
                     <i class='bx  bx-sidebar ml-2 text-xl'  ></i> 
                 </button>
-            </div>
-            <div>
+            </div> --}}
+            {{-- <div class="">
                 <button id="open-chat" onclick="toggleChatAndCloseSidebar(); return false;"
-                    class=" py-2 px-4 text-sm  lg:flex rounded-full cursor-pointer bg-black text-white absolute top-5 right-3 z-40 flex items-center justify-center">
+                    class=" py-2 px-4 text-sm  lg:flex rounded-full cursor-pointer bg-green-500 text-white absolute top-5 right-3 z-40 flex items-center justify-center">
                     <i class='bx  bx-sidebar mr-2 text-xl'  ></i>  open chat
                 </button>
-            </div>
+            </div> --}}
             <style>
                 #open-chat .chat-text {
                     display: none;
@@ -104,13 +110,15 @@
             {{-- <div class="flex-grow w-full"> --}}
                 {{ $slot }}
             </div>
-            <aside id="chat-area" class="bg-white  border border-gray-300 w-[50%]" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);">
-                <livewire:chat-component />
-            </aside>
+            <aside id="chat-area" class="w-[50%]" >
+            {{-- <aside id="chat-area" class=" bg-white  border rounded-3xl border-gray-300 w-[50%]" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);"> --}}
+                <div class="fixed top-16 right-0 z-50 h-screen border rounded-3xl border-gray-300  w-[30%] bg-white" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);">
+                    <livewire:chat-component />
+                </div>
+                </aside>
+            </div>
         </div>
-
     </div>
-    
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
