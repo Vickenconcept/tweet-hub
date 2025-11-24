@@ -12,6 +12,7 @@ use App\Services\CloudinaryService;
 use App\Services\ChatGptService;
 use App\Models\Asset;
 use Livewire\WithFileUploads;
+use Carbon\Carbon;
 
 class ChatComponent extends Component
 {
@@ -32,6 +33,8 @@ class ChatComponent extends Component
     public $scheduledDateTime = '';
     public $scheduledPosts = [];
     public $sentPosts = [];
+    public $timezone = '';
+    public array $timezoneOptions = [];
     
     // AI Image Generation
     public $showImageGenerator = false;
@@ -42,6 +45,8 @@ class ChatComponent extends Component
 
     public function mount()
     {
+        $this->timezoneOptions = $this->availableTimezoneOptions();
+        $this->timezone = Auth::user()?->timezone ?? config('app.timezone');
         $this->drafts = [];
         $this->threadMessages = [];
         $this->sentPosts = [];
@@ -147,7 +152,7 @@ class ChatComponent extends Component
         }
 
         $this->validate([
-            'scheduledDateTime' => 'required|date|after:now'
+            'scheduledDateTime' => 'required|date_format:Y-m-d\TH:i'
         ]);
 
         $user = Auth::user();
@@ -161,6 +166,22 @@ class ChatComponent extends Component
         if (!empty(trim($this->message))) {
             $messages[] = $this->message;
         }
+
+        $userTimezone = $this->userTimezone();
+
+        try {
+            $scheduledAtUserTz = Carbon::createFromFormat('Y-m-d\TH:i', $this->scheduledDateTime, $userTimezone);
+        } catch (\Throwable $e) {
+            $this->errorMessage = 'Invalid schedule time.';
+            return;
+        }
+
+        if ($scheduledAtUserTz->lessThanOrEqualTo(now($userTimezone))) {
+            $this->errorMessage = 'Please pick a future time in your timezone.';
+            return;
+        }
+
+        $scheduledAt = $scheduledAtUserTz->clone()->timezone(config('app.timezone'));
 
         $isThread = count($messages) > 1;
         $prevLocalPostId = null;
@@ -184,7 +205,7 @@ class ChatComponent extends Component
                 'content' => trim($part),
                 'media' => $media,
                 'in_reply_to_post_id' => $isThread && $prevLocalPostId ? $prevLocalPostId : null,
-                'scheduled_at' => $this->scheduledDateTime,
+                'scheduled_at' => $scheduledAt->copy(),
                 'status' => 'scheduled'
             ]);
 
@@ -233,7 +254,7 @@ class ChatComponent extends Component
                     }
                 }
             }
-            $this->scheduledDateTime = $post->scheduled_at->format('Y-m-d\TH:i');
+            $this->scheduledDateTime = $post->scheduled_at->timezone($this->userTimezone())->format('Y-m-d\TH:i');
             $this->showSchedulePicker = true;
             $this->activeTab = 'compose';
             
@@ -1007,6 +1028,44 @@ class ChatComponent extends Component
                 $this->dispatch('thread-state-updated', ['threadStarted' => true]);
             }
         }
+    }
+
+    public function updateTimezone()
+    {
+        $this->validate([
+            'timezone' => 'required|timezone',
+        ]);
+
+        $user = Auth::user();
+        if (!$user) {
+            $this->errorMessage = 'You must be logged in to update timezone.';
+            return;
+        }
+
+        $user->update(['timezone' => $this->timezone]);
+        $this->successMessage = 'Timezone updated to ' . $this->timezone . '.';
+    }
+
+    protected function availableTimezoneOptions(): array
+    {
+        return [
+            'UTC' => 'UTC',
+            'Africa/Lagos' => 'Africa/Lagos (GMT+1)',
+            'Europe/London' => 'Europe/London',
+            'Europe/Paris' => 'Europe/Paris',
+            'America/New_York' => 'America/New_York',
+            'America/Chicago' => 'America/Chicago',
+            'America/Los_Angeles' => 'America/Los_Angeles',
+            'Asia/Dubai' => 'Asia/Dubai',
+            'Asia/Singapore' => 'Asia/Singapore',
+            'Asia/Tokyo' => 'Asia/Tokyo',
+            'Australia/Sydney' => 'Australia/Sydney',
+        ];
+    }
+
+    protected function userTimezone(): string
+    {
+        return $this->timezone ?: (Auth::user()?->timezone ?? config('app.timezone'));
     }
 
     public function render()

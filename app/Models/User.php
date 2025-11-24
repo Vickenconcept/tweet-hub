@@ -34,6 +34,7 @@ class User extends Authenticatable
         'default_niche',
         'last_daily_ideas_generated',
         'monitored_keywords',
+        'timezone',
     ];
 
     /**
@@ -119,5 +120,10 @@ class User extends Authenticatable
     public function businessAutoPosts(): HasMany
     {
         return $this->hasMany(BusinessAutoPost::class);
+    }
+
+    public function preferredTimezone(): string
+    {
+        return $this->timezone ?: config('app.timezone');
     }
 }

@@ -7,6 +7,7 @@ use App\Models\BusinessAutoPost;
 use App\Models\BusinessAutoProfile;
 use App\Models\Post;
 use Carbon\Carbon;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -35,9 +36,16 @@ class BusinessAutoPostService
             return $existing;
         }
 
-        return DB::transaction(function () use ($profile, $postDate, $existing, $force) {
+        $recentPosts = $profile->posts()
+            ->whereNotNull('content')
+            ->orderBy('post_date', 'desc')
+            ->limit(5)
+            ->pluck('content')
+            ->toArray();
+
+        return DB::transaction(function () use ($profile, $postDate, $existing, $force, $recentPosts) {
             $rawContent = $this->chatGptService->generateContent(
-                $this->buildPrompt($profile, $postDate)
+                $this->buildPrompt($profile, $postDate, $recentPosts)
             );
 
             $content = $this->normalizeContent($rawContent);
@@ -113,13 +121,34 @@ class BusinessAutoPostService
         });
     }
 
-    protected function buildPrompt(BusinessAutoProfile $profile, Carbon $date): string
+    protected function buildPrompt(BusinessAutoProfile $profile, Carbon $date, array $recentPosts = []): string
     {
         $keywords = collect($profile->keywords ?? [])->filter()->implode(', ');
         $description = trim($profile->description ?? '');
         $tone = $profile->tone ?: 'Friendly';
-
+        $dayName = $date->format('l');
         $dateString = $date->isoFormat('MMMM D, YYYY');
+        $seasonHint = $date->format('F');
+
+        $angles = [
+            'Share a founder-style story with a personal insight or obstacle overcome.',
+            'Teach a quick actionable tip or micro-framework the audience can use immediately.',
+            'Highlight a client win, testimonial, or real-world result (keep specifics believable).',
+            'Ask a thoughtful question that sparks replies and showcases your expertise.',
+            'Deliver a contrarian take or myth-busting perspective (stay respectful).',
+            'Offer a mini behind-the-scenes peek into process, tools, or culture.',
+            'Provide a short checklist or numbered guidance with a catchy hook.',
+        ];
+
+        $angle = Arr::random($angles);
+
+        $recentSummary = '';
+        if (!empty($recentPosts)) {
+            $recentSummary = "Recent posts to avoid repeating (no similar opens, verbs, or CTAs):\n" .
+                collect($recentPosts)->map(function ($content, $index) {
+                    return ($index + 1) . '. ' . $content;
+                })->implode("\n");
+        }
 
         return <<<PROMPT
 You are writing a single engaging social media post that can be published on X (Twitter) for {$profile->name}.
@@ -127,14 +156,19 @@ You are writing a single engaging social media post that can be published on X (
 Business overview: {$description}
 Focus keywords: {$keywords}
 Desired tone: {$tone}
-Date context: {$dateString}
+Today is {$dayName}, {$dateString}. Consider seasonal mood for {$seasonHint}.
+Angle for today's post: {$angle}
+
+{$recentSummary}
 
 Constraints:
 - Max 270 characters
 - Use natural human language with a clear hook and CTA
-- Include 1-2 relevant hashtags at the end (if they fit naturally)
-- Avoid emojis unless they feel authentic
+- Include 1–2 smart hashtags only if they feel natural
+- Emojis are optional and should reinforce, not replace words
 - Do NOT number or label the response
+- The post must feel fresh compared to the recent posts (new hook, different verbs, new CTA)
+- Mention at least one concrete detail (metric, scenario, question, or benefit) to avoid generic phrasing
 - Return only the final post copy with no prefixes or explanations
 PROMPT;
     }

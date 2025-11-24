@@ -1,4 +1,7 @@
 <div class="space-y-6">
+    @php
+        $userTimezone = auth()->user()?->timezone ?? config('app.timezone');
+    @endphp
     <!-- Header Card -->
     <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
@@ -60,7 +63,7 @@
                                 </span>
                                 <span class="text-sm text-gray-500 flex items-center gap-1">
                                     <i class="bx bx-time text-base"></i>
-                                    {{ $post->scheduled_at->format('M j, Y g:i A') }}
+                                    {{ $post->scheduled_at->timezone($userTimezone)->format('M j, Y g:i A') }}
                                 </span>
                             </div>
                             <p class="text-gray-800 mb-3 leading-relaxed">{{ $post->content }}</p>
@@ -153,9 +156,10 @@
                 @enderror
 
                 <div class="mb-8">
-                    <label for="editScheduledAt" class="block text-sm font-semibold text-gray-800 mb-2">Schedule Time</label>
+                    <label for="editScheduledAt" class="block text-sm font-semibold text-gray-800 mb-2">Schedule Time ({{ $userTimezone }})</label>
                     <input wire:model="editScheduledAt" type="datetime-local" id="editScheduledAt"
-                           class="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm @error('editScheduledAt') border-red-300 @enderror">
+                           class="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm @error('editScheduledAt') border-red-300 @enderror"
+                           min="{{ now($userTimezone)->format('Y-m-d\TH:i') }}">
                 </div>
 
                 <div class="flex gap-3">

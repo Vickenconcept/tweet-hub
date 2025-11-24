@@ -7,6 +7,7 @@ use App\Models\Post;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\On;
+use Carbon\Carbon;
 
 class QueuedPostsComponent extends Component
 {
@@ -18,9 +19,11 @@ class QueuedPostsComponent extends Component
     public $showEditModal = false;
     public $editContent = '';
     public $editScheduledAt = '';
+    public $timezone = '';
 
     public function mount()
     {
+        $this->timezone = Auth::user()?->timezone ?? config('app.timezone');
         $this->loadQueuedPosts();
     }
 
@@ -51,7 +54,7 @@ class QueuedPostsComponent extends Component
         if ($post) {
             $this->selectedPost = $post;
             $this->editContent = $post->content;
-            $this->editScheduledAt = $post->scheduled_at->format('Y-m-d\TH:i');
+            $this->editScheduledAt = $post->scheduled_at->timezone($this->timezone)->format('Y-m-d\TH:i');
             $this->showEditModal = true;
         }
     }
@@ -60,15 +63,28 @@ class QueuedPostsComponent extends Component
     {
         $this->validate([
             'editContent' => 'required|min:1|max:280',
-            'editScheduledAt' => 'required|date|after:now',
+            'editScheduledAt' => 'required|date_format:Y-m-d\TH:i',
         ], [
             'editContent.required' => 'Content is required.',
             'editContent.min' => 'Content must be at least 1 character.',
             'editContent.max' => 'Content cannot exceed 280 characters.',
             'editScheduledAt.required' => 'Schedule time is required.',
-            'editScheduledAt.date' => 'Please enter a valid date and time.',
-            'editScheduledAt.after' => 'Schedule time must be in the future.',
+            'editScheduledAt.date_format' => 'Please enter a valid date and time.',
         ]);
+
+        try {
+            $scheduledAtUserTz = Carbon::createFromFormat('Y-m-d\TH:i', $this->editScheduledAt, $this->timezone);
+        } catch (\Throwable $e) {
+            $this->errorMessage = 'Invalid schedule time.';
+            return;
+        }
+
+        if ($scheduledAtUserTz->lessThanOrEqualTo(now($this->timezone))) {
+            $this->errorMessage = 'Schedule time must be in the future for your timezone.';
+            return;
+        }
+
+        $scheduledAt = $scheduledAtUserTz->clone()->timezone(config('app.timezone'));
 
         try {
             // Refresh the post to ensure we have the latest version
@@ -84,7 +100,7 @@ class QueuedPostsComponent extends Component
 
             $post->update([
                 'content' => $this->editContent,
-                'scheduled_at' => $this->editScheduledAt,
+                'scheduled_at' => $scheduledAt,
             ]);
 
             $this->showEditModal = false;

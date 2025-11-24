@@ -1,7 +1,7 @@
 @php
     use Illuminate\Support\Str;
 @endphp
-<div class="flex flex-col h-full w-full" x-data="{
+<div class="flex flex-col h-full w-full overflow-y-auto" x-data="{
     threadStarted: @entangle('threadStarted').live,
     assetPickerOpen: false,
     showSchedulePicker: false,
@@ -54,6 +54,9 @@ Livewire.on('post-scheduled', () => {
 
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col px-6 py-4 h-full">
+        @php
+            $userTimezone = auth()->user()?->timezone ?? $timezone ?? config('app.timezone');
+        @endphp
         @if ($activeTab === 'compose')
             @if ($successMessage)
                 <div class="mb-4 bg-white rounded-3xl shadow-sm border border-green-200 p-4">
@@ -83,6 +86,7 @@ Livewire.on('post-scheduled', () => {
                     </button>
                 </div>
             </div>
+            
             <div class=" gap-4 grid grid-cols-6">
                 <!-- Thread Messages Panel -->
                 <div class="col-span-2" x-show="threadStarted">
@@ -233,7 +237,7 @@ Livewire.on('post-scheduled', () => {
                         </div>
                         <div class="flex items-center space-x-2 space-y-2 flex-wrap">
                             <button type="submit"
-                                class="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors cursor-pointer shadow-sm"
+                                class="text-sm flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors cursor-pointer shadow-sm"
                                 :disabled="!canTweet" wire:loading.attr="disabled" wire:target="savePost">
                                 <span wire:loading.remove wire:target="savePost" class="text-nowrap">Tweet now</span>
                                 <span wire:loading wire:target="savePost">
@@ -243,12 +247,16 @@ Livewire.on('post-scheduled', () => {
                             </button>
                             <div class="relative flex-1">
                                 <button type="button" @click="showSchedulePicker = !showSchedulePicker"
-                                    class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 border border-gray-200 text-gray-700 w-full font-semibold rounded-xl hover:bg-gray-200 transition-colors cursor-pointer text-nowrap"
+                                    class="text-sm inline-flex items-center justify-between gap-2 px-6 py-3 bg-gray-100 border border-gray-200 text-gray-700 w-full font-semibold rounded-xl hover:bg-gray-200 transition-colors cursor-pointer text-left"
                                     :class="{ 'bg-gray-200': showSchedulePicker }" :disabled="!canTweet">
-                                    Add to Queue
-                                    <span
-                                        class="text-sm">{{ $scheduledDateTime ? \Carbon\Carbon::parse($scheduledDateTime)->format('M jS, Y, g:i A') : 'Select time' }}</span>
-                                    <i class="bx bx-chevron-down text-lg transition-transform duration-200"
+                                    <div>
+                                        <span class="block text-sm text-nowrap">Add to Queue</span>
+                                        <span class="text-xs text-gray-500 text-nowrap">
+                                            {{ $scheduledDateTime ? \Carbon\Carbon::parse($scheduledDateTime, $userTimezone)->format('M jS, Y, g:i A') : '' }}
+                                            ({{ $userTimezone }})
+                                        </span>
+                                    </div>
+                                    <i class="bx bx-chevron-down text-lg ml-2 transition-transform duration-200"
                                         :class="{ 'rotate-180': showSchedulePicker }"></i>
                                 </button>
                                 <!-- Schedule picker dropdown -->
@@ -262,14 +270,14 @@ Livewire.on('post-scheduled', () => {
                                     class="absolute right-0 mt-2 bg-white rounded-2xl shadow-lg border border-gray-200 p-6 z-50 w-80">
                                     <div class="mb-6">
                                         <label class="block text-sm font-semibold text-gray-800 mb-3">Schedule
-                                            for</label>
+                                            for ({{ $userTimezone }})</label>
                                         <input type="datetime-local" wire:model.live="scheduledDateTime"
                                             class="w-full rounded-2xl border-gray-200 shadow-sm focus:border-green-500 focus:ring focus:ring-green-200 focus:ring-opacity-50 px-4 py-3 text-sm"
-                                            min="{{ now()->format('Y-m-d\TH:i') }}">
+                                            min="{{ now($userTimezone)->format('Y-m-d\TH:i') }}">
                                     </div>
                                     <div class="flex justify-end">
                                         <button type="button" wire:click="schedulePost"
-                                            class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors cursor-pointer shadow-sm"
+                                            class="text-sm inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors cursor-pointer shadow-sm"
                                             :disabled="!canTweet">
                                             <span wire:loading.remove wire:target="schedulePost">Schedule Post</span>
                                             <span wire:loading wire:target="schedulePost"><i
@@ -280,6 +288,26 @@ Livewire.on('post-scheduled', () => {
                             </div>
                         </div>
                     </form>
+                </div>
+            </div>
+            <div class="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 mt-2 mb-6 flex flex-col gap-3 md:flex-col ">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.3em] text-gray-400 mb-1">Scheduling Timezone</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ $userTimezone }}</p>
+                    <p class="text-xs text-gray-500">All queued posts use this timezone.</p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center w-full md:w-auto">
+                    <select wire:model="timezone"
+                        class="flex-1 rounded-2xl border border-gray-300 bg-white px-4 py-2.5 focus:ring-2 focus:ring-green-500/30 focus:border-green-600 text-sm">
+                        @foreach ($timezoneOptions as $zone => $label)
+                            <option value="{{ $zone }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <button type="button" wire:click="updateTimezone"
+                        class="text-sm inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white font-semibold rounded-2xl hover:bg-green-700 transition-colors cursor-pointer">
+                        <i class="bx bx-save"></i>
+                        Save
+                    </button>
                 </div>
             </div>
             <!-- Advanced Options -->
@@ -346,12 +374,12 @@ Livewire.on('post-scheduled', () => {
                                     <div
                                         class="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-1 rounded-xl text-xs">
                                         <i class="bx bx-calendar text-sm"></i>
-                                        {{ $post->scheduled_at->format('M j, Y') }}
+                                        {{ $post->scheduled_at->timezone($userTimezone)->format('M j, Y') }}
                                     </div>
                                     <div
                                         class="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-1 rounded-xl text-xs">
                                         <i class="bx bx-time text-sm"></i>
-                                        {{ $post->scheduled_at->format('g:i A') }}
+                                        {{ $post->scheduled_at->timezone($userTimezone)->format('g:i A') }}
                                     </div>
                                 </div>
                                 <div
