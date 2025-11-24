@@ -59,10 +59,11 @@ class BusinessAutoPostService
 
             if ($profile->include_images) {
                 try {
+                    $style = in_array($profile->image_style, ['natural', 'vivid']) ? $profile->image_style : 'natural';
                     $imageUrl = $this->chatGptService->generateImage(
-                        $this->buildImagePrompt($profile),
+                        $this->buildImagePrompt($profile, $content),
                         '1024x1024',
-                        $profile->image_style ?: 'natural'
+                        $style
                     );
 
                     if ($imageUrl) {
@@ -173,11 +174,22 @@ Constraints:
 PROMPT;
     }
 
-    protected function buildImagePrompt(BusinessAutoProfile $profile): string
+    protected function buildImagePrompt(BusinessAutoProfile $profile, string $postCopy): string
     {
-        $keywords = collect($profile->keywords ?? [])->filter()->implode(', ');
+        $keywords = collect($profile->keywords ?? [])->filter()->take(5)->implode(', ');
+        $summary = mb_strlen($postCopy) > 280 ? mb_substr($postCopy, 0, 280) : $postCopy;
 
-        return "Create a clean, modern promotional illustration that represents {$profile->name}. Focus on {$keywords}. Use the same mood as the copy, make it brand-friendly and suitable for social media.";
+        return <<<PROMPT
+Create a single social-style image that visualizes this post:
+"{$summary}"
+
+Brand: {$profile->name}
+Context keywords: {$keywords}
+Requirements:
+- Reflect the post's main idea (product, benefit, or scenario) rather than random symbols
+- Keep it clean, modern, and suitable for Twitter
+- Avoid text-heavy graphics or generic mockups.
+PROMPT;
     }
 
     protected function normalizeContent(?string $content): ?string

@@ -82,7 +82,11 @@
                             </label>
                         </div>
                         <div class="{{ $form['include_images'] ? 'opacity-100' : 'opacity-60' }}">
-                            <input type="text" wire:model.defer="form.image_style" class="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 focus:ring-2 focus:ring-green-500/30 focus:border-green-600 transition" placeholder="photorealistic, 3D, pastel..." {{ $form['include_images'] ? '' : 'disabled' }}/>
+                            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Image style</label>
+                            <select wire:model.defer="form.image_style" class="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 focus:ring-2 focus:ring-green-500/30 focus:border-green-600 transition" {{ $form['include_images'] ? '' : 'disabled' }}>
+                                <option value="natural">Natural (photo-real)</option>
+                                <option value="vivid">Vivid (bold & artistic)</option>
+                            </select>
                         </div>
                     </div>
                     <div class="rounded-2xl border border-gray-200 px-4 py-3 flex items-center justify-between">

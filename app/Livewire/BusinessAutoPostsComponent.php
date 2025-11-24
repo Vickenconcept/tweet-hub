@@ -37,6 +37,10 @@ class BusinessAutoPostsComponent extends Component
     public bool $generating = false;
 
     protected BusinessAutoPostService $generator;
+    protected array $imageStyleOptions = [
+        'natural' => 'Natural (photo-real, default)',
+        'vivid' => 'Vivid (bold & artistic)',
+    ];
 
     public function boot(BusinessAutoPostService $generator): void
     {
@@ -82,7 +86,7 @@ class BusinessAutoPostsComponent extends Component
             'posting_time' => $profile->posting_time,
             'timezone' => $profile->timezone,
             'include_images' => $profile->include_images,
-            'image_style' => $profile->image_style ?: 'natural',
+            'image_style' => $this->normalizeImageStyle($profile->image_style),
             'is_active' => $profile->is_active,
         ];
     }
@@ -105,6 +109,7 @@ class BusinessAutoPostsComponent extends Component
             'posting_time' => '09:00',
             'timezone' => config('app.timezone'),
             'include_images' => false,
+            'image_style' => 'natural',
             'image_style' => 'natural',
             'is_active' => true,
         ];
@@ -142,7 +147,7 @@ class BusinessAutoPostsComponent extends Component
             'form.posting_time' => 'required|date_format:H:i',
             'form.timezone' => 'required|string|max:80',
             'form.include_images' => 'boolean',
-            'form.image_style' => 'nullable|string|max:60',
+            'form.image_style' => 'nullable|string|in:' . implode(',', array_keys($this->imageStyleOptions)),
             'form.is_active' => 'boolean',
         ])['form'];
 
@@ -155,7 +160,7 @@ class BusinessAutoPostsComponent extends Component
             'posting_time' => $data['posting_time'],
             'timezone' => $data['timezone'],
             'include_images' => $data['include_images'],
-            'image_style' => $data['image_style'],
+            'image_style' => $this->normalizeImageStyle($data['image_style']),
             'is_active' => $data['is_active'],
         ];
 
@@ -181,6 +186,12 @@ class BusinessAutoPostsComponent extends Component
             ->filter()
             ->values()
             ->all();
+    }
+
+    protected function normalizeImageStyle(?string $style): string
+    {
+        $style = $style ?: 'natural';
+        return array_key_exists($style, $this->imageStyleOptions) ? $style : 'natural';
     }
 
     public function refreshCalendar(): void
