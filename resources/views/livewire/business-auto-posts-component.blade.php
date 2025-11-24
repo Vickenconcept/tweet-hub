@@ -1,3 +1,6 @@
+@php
+    use Illuminate\Support\Str;
+@endphp
 <div class="space-y-8">
     <div class="bg-gradient-to-r from-green-600 to-emerald-500 rounded-3xl p-8 text-white shadow-lg">
         <div class="flex items-start justify-between gap-6 flex-col lg:flex-row">
@@ -228,7 +231,7 @@
                 </div>
 
                 @if($selectedPost)
-                    <div class="space-y-4">
+                    <div class="space-y-4" wire:key="selected-post-{{ $selectedPost->id }}">
                         <div class="flex items-center gap-2 text-sm">
                             <span class="px-3 py-1 rounded-full text-xs font-semibold {{ $selectedPost->statusBadgeColor() }}">
                                 {{ ucfirst($selectedPost->status) }}
@@ -244,9 +247,13 @@
                             {{ $selectedPost->content }}
                         </div>
                         @if($selectedPost->image_url)
-                            <div>
+                            @php
+                                $cacheBust = optional($selectedPost->updated_at)->timestamp ?? time();
+                                $separator = Str::contains($selectedPost->image_url, '?') ? '&' : '?';
+                            @endphp
+                            <div wire:key="selected-image-{{ $selectedPost->id }}-{{ $cacheBust }}">
                                 <p class="text-xs uppercase text-gray-400 mb-2 tracking-[0.2em]">Image preview</p>
-                                <img src="{{ $selectedPost->image_url }}" alt="Generated visual" class="rounded-2xl border border-gray-100 shadow-sm">
+                                <img src="{{ $selectedPost->image_url . $separator . 'v=' . $cacheBust }}" alt="Generated visual" class="rounded-2xl border border-gray-100 shadow-sm">
                             </div>
                         @endif
                         @if($selectedPost->error_message)

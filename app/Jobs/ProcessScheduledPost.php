@@ -10,7 +10,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ProcessScheduledPost implements ShouldQueue
 {
@@ -22,6 +24,8 @@ class ProcessScheduledPost implements ShouldQueue
 
     public function handle(): void
     {
+        $tempFiles = [];
+
         try {
             // Update status to processing
             $this->post->update(['status' => 'processing']);
@@ -87,7 +91,17 @@ class ProcessScheduledPost implements ShouldQueue
                 foreach ($this->post->media as $code) {
                     $asset = Asset::where('user_id', $user->id)->where('code', $code)->first();
                     if ($asset) {
-                        $mediaId = $twitter->uploadLocalMedia(storage_path('app/public/' . $asset->path));
+                        $uploadPath = $this->resolveAssetPath($asset, $tempFiles);
+                        if (!$uploadPath) {
+                            Log::warning('Unable to resolve asset path for upload', [
+                                'post_id' => $this->post->id,
+                                'asset_code' => $code,
+                                'path' => $asset->path,
+                            ]);
+                            continue;
+                        }
+
+                        $mediaId = $twitter->uploadLocalMedia($uploadPath);
                         if ($mediaId) {
                             $mediaIds[] = $mediaId;
                             Log::info('Media uploaded successfully', [
@@ -171,6 +185,54 @@ class ProcessScheduledPost implements ShouldQueue
             }
 
             throw $e;
+        } finally {
+            foreach ($tempFiles as $tempFile) {
+                if ($tempFile && file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+            }
         }
+    }
+
+    protected function resolveAssetPath(Asset $asset, array &$tempFiles): ?string
+    {
+        $path = $asset->path;
+
+        if (Str::startsWith($path, ['http://', 'https://'])) {
+            try {
+                $response = Http::timeout(60)->get($path);
+                if (!$response->successful()) {
+                    Log::warning('Failed to download remote asset', [
+                        'asset_id' => $asset->id,
+                        'status' => $response->status(),
+                    ]);
+                    return null;
+                }
+
+                $extension = pathinfo(parse_url($path, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION) ?: 'jpg';
+                $tempFile = tempnam(sys_get_temp_dir(), 'scheduled_media_') . '.' . $extension;
+                file_put_contents($tempFile, $response->body());
+                $tempFiles[] = $tempFile;
+
+                return $tempFile;
+            } catch (\Throwable $e) {
+                Log::warning('Failed to download remote asset', [
+                    'asset_id' => $asset->id,
+                    'error' => $e->getMessage(),
+                ]);
+                return null;
+            }
+        }
+
+        $localPath = storage_path('app/public/' . ltrim($path, '/'));
+        if (!file_exists($localPath)) {
+            Log::warning('Local asset file not found', [
+                'asset_id' => $asset->id,
+                'path' => $localPath,
+            ]);
+            return null;
+        }
+
+        return $localPath;
     }
 } 

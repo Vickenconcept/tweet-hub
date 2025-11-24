@@ -252,9 +252,10 @@ class BusinessAutoPostsComponent extends Component
     public function selectDate(string $date): void
     {
         $this->selectedDate = $date;
-        $this->selectedPost = BusinessAutoPost::where('business_auto_profile_id', $this->activeProfileId)
+        $post = BusinessAutoPost::where('business_auto_profile_id', $this->activeProfileId)
             ->whereDate('post_date', $date)
             ->first();
+        $this->selectedPost = $post ? $post->fresh() : null;
     }
 
     public function generateToday(): void

@@ -11,7 +11,6 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BusinessAutoPostService
@@ -60,14 +59,18 @@ class BusinessAutoPostService
             if ($profile->include_images) {
                 try {
                     $style = in_array($profile->image_style, ['natural', 'vivid']) ? $profile->image_style : 'natural';
-                    $imageUrl = $this->chatGptService->generateImage(
+                    $generatedImageUrl = $this->chatGptService->generateImage(
                         $this->buildImagePrompt($profile, $content),
                         '1024x1024',
                         $style
                     );
 
-                    if ($imageUrl) {
-                        $assetCode = $this->storeGeneratedImage($profile->user_id, $imageUrl);
+                    if ($generatedImageUrl) {
+                        $storedImage = $this->storeGeneratedImage($profile->user_id, $generatedImageUrl);
+                        if ($storedImage) {
+                            $assetCode = $storedImage['code'];
+                            $imageUrl = $storedImage['url'];
+                        }
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Failed to generate image for auto post', [
@@ -228,8 +231,10 @@ PROMPT;
         return $scheduledAppTz;
     }
 
-    protected function storeGeneratedImage(int $userId, string $imageUrl): ?string
+    protected function storeGeneratedImage(int $userId, string $imageUrl): ?array
     {
+        $tempFile = null;
+
         try {
             $response = Http::timeout(60)->get($imageUrl);
 
@@ -238,19 +243,27 @@ PROMPT;
             }
 
             $extension = $this->guessExtension($response->header('Content-Type'), $imageUrl);
-            $filename = 'auto-posts/' . now()->format('Y/m') . '/' . $userId . '-' . Str::random(12) . '.' . $extension;
+            $tempFile = tempnam(sys_get_temp_dir(), 'auto_post_img_') . '.' . $extension;
+            file_put_contents($tempFile, $response->body());
 
-            Storage::disk('public')->put($filename, $response->body());
+            $cloudinaryService = new CloudinaryService();
+            $uploadResult = $cloudinaryService->uploadFileFromPath(
+                $tempFile,
+                'auto_post_' . Str::uuid()->toString() . '.' . $extension
+            );
 
             $asset = Asset::create([
                 'user_id' => $userId,
                 'type' => 'image',
-                'path' => $filename,
-                'original_name' => 'auto-post-' . now()->timestamp . '.' . $extension,
-                'code' => Str::uuid()->toString(),
+                'path' => $uploadResult['file_path'],
+                'original_name' => $uploadResult['original_name'] ?? ('auto-post-' . now()->timestamp . '.' . $extension),
+                'code' => Str::random(12),
             ]);
 
-            return $asset->code;
+            return [
+                'code' => $asset->code,
+                'url' => $uploadResult['file_path'],
+            ];
         } catch (\Throwable $e) {
             Log::warning('Failed to store GPT image', [
                 'user_id' => $userId,
@@ -258,6 +271,10 @@ PROMPT;
             ]);
 
             return null;
+        } finally {
+            if ($tempFile && file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
         }
     }
 
