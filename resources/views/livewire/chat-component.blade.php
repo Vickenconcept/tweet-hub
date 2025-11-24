@@ -74,7 +74,7 @@ Livewire.on('post-scheduled', () => {
             <div class="flex items-center justify-between mb-6">
                 <div>
                     <p class="text-sm uppercase tracking-[0.2em] text-gray-400">Compose</p>
-                    <span class="text-2xl font-semibold text-gray-900">Post Content</span>
+                    <span class="text-xl md:text-2xl font-semibold text-gray-900">Post Content</span>
                 </div>
                 <div class="flex justify-end items-center gap-2">
                     <button type="button" @click="$wire.endThread()" x-show="threadStarted" style="display: none;"
@@ -300,7 +300,7 @@ Livewire.on('post-scheduled', () => {
         @elseif ($activeTab === 'scheduled')
             <div class="mb-6">
                 <p class="text-sm uppercase tracking-[0.2em] text-gray-400">Scheduled</p>
-                <h2 class="text-2xl font-semibold text-gray-900 mt-1">Scheduled Posts</h2>
+                <h2 class="text-xl md:text-2xl font-semibold text-gray-900 mt-1">Scheduled Posts</h2>
             </div>
             @if (count($scheduledPosts) > 0)
                 <div class="space-y-4 overflow-y-auto h-[80%]">
@@ -375,7 +375,7 @@ Livewire.on('post-scheduled', () => {
         @elseif ($activeTab === 'drafts')
             <div class="mb-6">
                 <p class="text-sm uppercase tracking-[0.2em] text-gray-400">Drafts</p>
-                <h2 class="text-2xl font-semibold text-gray-900 mt-1">Saved Drafts</h2>
+                <h2 class="text-xl md:text-2xl font-semibold text-gray-900 mt-1">Saved Drafts</h2>
             </div>
             @if (count($drafts) > 0)
                 <div class="space-y-4 overflow-y-auto h-[80%]">
@@ -431,7 +431,7 @@ Livewire.on('post-scheduled', () => {
             <div class="mb-6 flex justify-between items-center">
                 <div>
                     <p class="text-sm uppercase tracking-[0.2em] text-gray-400">History</p>
-                    <h2 class="text-2xl font-semibold text-gray-900 mt-1">Sent Posts</h2>
+                    <h2 class="text-xl md:text-2xl font-semibold text-gray-900 mt-1">Sent Posts</h2>
                 </div>
                 @if (count($sentPosts ?? []) > 0)
                     <button wire:click="clearAllSentPosts"
@@ -535,7 +535,7 @@ Livewire.on('post-scheduled', () => {
                         </div>
                         <div>
                             <p class="text-sm uppercase tracking-[0.2em] text-gray-400">AI Generator</p>
-                            <h3 class="text-2xl font-semibold text-gray-900 mt-1">AI Image Generator</h3>
+                            <h3 class="text-xl md:text-2xl font-semibold text-gray-900 mt-1">AI Image Generator</h3>
                             <p class="text-sm text-gray-600 mt-1">Powered by DALL-E 3</p>
                         </div>
                     </div>

@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable
 {
@@ -108,5 +109,15 @@ class User extends Authenticatable
         $this->update([
             'last_daily_ideas_generated' => now(),
         ]);
+    }
+
+    public function businessAutoProfiles(): HasMany
+    {
+        return $this->hasMany(BusinessAutoProfile::class);
+    }
+
+    public function businessAutoPosts(): HasMany
+    {
+        return $this->hasMany(BusinessAutoPost::class);
     }
 }

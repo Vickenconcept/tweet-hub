@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Post extends Model
 {
@@ -36,5 +37,10 @@ class Post extends Model
     public function replies()
     {
         return $this->hasMany(Post::class, 'in_reply_to_post_id');
+    }
+
+    public function autoPost(): HasOne
+    {
+        return $this->hasOne(BusinessAutoPost::class);
     }
 }

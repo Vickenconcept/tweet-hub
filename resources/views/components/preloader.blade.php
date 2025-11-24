@@ -7,9 +7,9 @@
     class="fixed inset-0 z-[9999] flex items-center justify-center bg-white/80 backdrop-blur-sm"
 >
     <div class="flex flex-col items-center gap-3">
-        <span class="inline-block animate-spin text-indigo-600 text-5xl">
+        <span class="inline-block animate-spin text-green-600 text-5xl">
             <i class='bx bx-loader-circle'></i>
         </span>
-        <span class="text-lg font-semibold text-indigo-700">Loading...</span>
+        <span class="text-lg font-semibold text-green-700">Loading...</span>
     </div>
 </div>

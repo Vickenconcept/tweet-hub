@@ -16,7 +16,7 @@
                         class="w-10 h-10 bg-gradient-to-br from-[#0b8a3d] to-[#0d5] rounded-2xl flex items-center justify-center mr-3 shadow-sm">
                         <span class="text-white text-lg font-semibold">TH</span>
                     </div>
-                    <div>
+                    <div class="hidden md:block">
                         <span class="font-bold text-xl text-gray-900">tweet-hunt</span>
                         <p class="text-xs text-gray-500 -mt-1">For X (Twitter)</p>
                     </div>
@@ -25,7 +25,7 @@
                 <!-- Page Title -->
                 <div class="ml-6 lg:ml-8">
                     <div class="flex items-center space-x-2">
-                        <button class="flex items-center space-x-2 cursor-pointer" onclick="if(window.toggleChatAndCloseSidebar) window.toggleChatAndCloseSidebar(); return false;">
+                        <button class="md:flex items-center space-x-2 cursor-pointer hidden" onclick="if(window.toggleChatAndCloseSidebar) window.toggleChatAndCloseSidebar(); return false;">
                             <i class='bx bx-sidebar text-xl text-gray-600'></i>
                         </button>
                         <h2 class="text-lg lg:text-xl font-semibold text-gray-900 capitalize">

@@ -136,6 +136,13 @@ class ProcessScheduledPost implements ShouldQueue
                 'twitter_post_id' => $response->data->id ?? null
             ]);
 
+            if ($this->post->autoPost) {
+                $this->post->autoPost->update([
+                    'status' => 'posted',
+                    'posted_at' => now(),
+                ]);
+            }
+
             Log::info('Post marked as sent successfully', [
                 'post_id' => $this->post->id,
                 'user_id' => $user->id,
@@ -155,6 +162,13 @@ class ProcessScheduledPost implements ShouldQueue
             $this->post->update([
                 'status' => 'failed'
             ]);
+
+            if ($this->post->autoPost) {
+                $this->post->autoPost->update([
+                    'status' => 'failed',
+                    'error_message' => $e->getMessage(),
+                ]);
+            }
 
             throw $e;
         }

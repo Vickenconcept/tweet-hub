@@ -15,7 +15,7 @@
                 </div>
                 <div>
                     <p class="text-sm text-gray-500 uppercase tracking-[0.2em]">Welcome Back</p>
-                    <p class="text-xl font-semibold text-gray-900">Tweet-Hunt for X</p>
+                    <p class="text-xl font-semibold text-gray-900">Tweet-Hunt</p>
                 </div>
             </div>
         </header>
@@ -96,7 +96,7 @@
                 <div class="absolute top-10 left-12 bg-white/10 border border-white/30 rounded-2xl px-5 py-3 text-white backdrop-blur">
                     <p class="text-xs uppercase tracking-[0.4em]">MENTIONS</p>
                     <p class="text-2xl font-semibold">36k+</p>
-                    <p class="text-sm opacity-80">Live notifications on X</p>
+                    <p class="text-sm opacity-80">Notifications on X</p>
                 </div>
 
                 <div class="absolute top-10 right-10 bg-white/90 rounded-[24px] p-4 shadow-2xl w-72">

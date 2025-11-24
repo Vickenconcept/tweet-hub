@@ -112,7 +112,7 @@
             </div>
             <aside id="chat-area" class="w-[50%]" >
             {{-- <aside id="chat-area" class=" bg-white  border rounded-3xl border-gray-300 w-[50%]" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);"> --}}
-                <div class="fixed top-16 right-0 z-50 h-screen border rounded-3xl border-gray-300  w-[30%] bg-white" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);">
+                <div class="fixed top-16 right-0 z-50 h-screen border rounded-3xl border-gray-300  w-[100%] md:w-[30%] bg-white" style="box-shadow: -5px 0px 5px rgb(231, 229, 229);">
                     <livewire:chat-component />
                 </div>
                 </aside>

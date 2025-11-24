@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Schedule the processing of scheduled posts every minute
 Schedule::command('posts:process-scheduled')->everyMinute();
+
+// Generate business auto posts daily at 5 AM server time
+Schedule::command('business:auto-generate')->dailyAt('05:00');
