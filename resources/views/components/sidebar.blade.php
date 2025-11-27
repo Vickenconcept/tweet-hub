@@ -9,7 +9,7 @@
                     <i class='bx bx-at text-2xl text-white'></i>
                 </div>
                 <div>
-                    <p class="text-xs text-gray-500 uppercase tracking-[0.2em]">Tweet-Hunt</p>
+                    <p class="text-xs text-gray-500 uppercase tracking-[0.2em]">xengager</p>
                     <p class="font-semibold text-base text-gray-900">Studio</p>
                 </div>
             </a>

@@ -8,7 +8,7 @@
                 <p class="text-xs uppercase tracking-[0.3em] text-white/70 mb-2">New Feature</p>
                 <h1 class="text-3xl font-semibold mb-3">Business Auto-Pilot Posts</h1>
                 <p class="text-white/80 text-sm max-w-3xl leading-relaxed">
-                    Describe your product once, choose a tone, and Tweet-Hunt will craft daily posts (and optional visuals) for you.
+                    Describe your product once, choose a tone, and xengager will craft daily posts (and optional visuals) for you.
                     Track everything in the calendar—tap any date to review what went live.
                 </p>
             </div>

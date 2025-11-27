@@ -312,7 +312,7 @@ $generatedIdeasCount = is_array($generatedIdeas) ? count($generatedIdeas) : 0;
             </div>
 
             <p class="text-center text-xs text-gray-400 py-6">
-                Built for creators • Powered by Tweet-Hunt
+                Built for creators • Powered by xengager
             </p>
         </div>
     </div>

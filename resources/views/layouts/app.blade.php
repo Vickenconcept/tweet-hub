@@ -8,14 +8,14 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @seo([
-        'title' => 'tweet-hunt',
-        'description' => 'tweet-hunt',
-        'image' => asset('images/login-image.png'),
+        'title' => 'xengager',
+        'description' => 'xengager for X',
+        'image' => asset('images/meta-image.png'),
         'site_name' => config('app.name'),
         'favicon' => asset('favicon.ico'),
     ])
 
-    <title>tweet-hunt</title>
+    <title>xengager for X</title>
 
     <script src="https://unpkg.com/boxicons@2.1.4/dist/boxicons.js"></script>
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>

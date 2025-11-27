@@ -103,11 +103,11 @@
 
 
 @seo([
-    'title' => 'FluenceGrid',
-    'description' => 'Influencers Management Hub',
-    'image' => asset('images/login-image.png'),
+    'title' => 'xengager for X',
+    'description' => 'xengager for X',
+    'image' => asset('images/meta-image.png'),
     'site_name' => config('app.name'),
-    'favicon' => asset('images/fav-image.png'),
+    'favicon' => asset('favicon.ico'),
 ])
 <x-guest-layout>
 
@@ -124,10 +124,10 @@
                 </div>
             </div>
             <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                Welcome back
+                Welcome to xengager
             </h2>
             <p class="mt-2 text-center text-sm text-gray-600">
-                Create an account
+                Create your account
             </p>
             <x-session-msg />
         </div>

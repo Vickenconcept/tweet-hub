@@ -17,7 +17,7 @@
                         <span class="text-white text-lg font-semibold">TH</span>
                     </div>
                     <div class="hidden md:block">
-                        <span class="font-bold text-xl text-gray-900">tweet-hunt</span>
+                        <span class="font-bold text-xl text-gray-900">xengager</span>
                         <p class="text-xs text-gray-500 -mt-1">For X (Twitter)</p>
                     </div>
                 </a>

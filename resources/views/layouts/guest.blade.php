@@ -8,14 +8,14 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @seo([
-        'title' => 'tweet-hunt',
-        'description' => 'tweet-hunt',
+        'title' => 'xengager',
+        'description' => 'xengager',
         'image' => asset('images/login-image.png'),
         'site_name' => config('app.name'),
         'favicon' => asset('favicon.ico'),
     ])
 
-    <title>tweet-hunt</title>
+    <title>xengager</title>
 
     <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 
@@ -35,7 +35,7 @@
 
 <body class="h-full !font-['Poppins']">
     <marquee direction="right" scrollamount="60" class="z-50 fixed w-full hidden" id="hiddenLinearPreloader">
-        <div class="bg-gradient-to-r from-gray-800 from-70%  to-indigo-500 w-[700px] p-1 rounded-full"></div>
+        <div class="bg-gradient-to-r from-gray-800 from-70%  to-green-500 w-[700px] p-1 rounded-full"></div>
     </marquee>
     {{ $slot }}
 

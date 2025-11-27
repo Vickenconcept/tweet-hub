@@ -1,9 +1,9 @@
 @seo([
-    'title' => 'Tweet Hunt',
-    'description' => 'Social listening & publishing hub',
-    'image' => asset('images/login-image.png'),
+    'title' => 'xengager for X',
+    'description' => 'xengager for X',
+    'image' => asset('images/meta-image.png'),
     'site_name' => config('app.name'),
-    'favicon' => asset('images/fav-image.png'),
+    'favicon' => asset('favicon.ico'),
 ])
 
 <x-guest-layout>
@@ -11,11 +11,11 @@
         <header class="flex items-center justify-between px-6 sm:px-12 py-6">
             <div class="flex items-center gap-3">
                 <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-[#0b8a3d] to-[#0d5] flex items-center justify-center text-white text-2xl font-semibold">
-                    TH
+                    XE
                 </div>
                 <div>
                     <p class="text-sm text-gray-500 uppercase tracking-[0.2em]">Welcome Back</p>
-                    <p class="text-xl font-semibold text-gray-900">Tweet-Hunt</p>
+                    <p class="text-xl font-semibold text-gray-900">xengager</p>
                 </div>
             </div>
         </header>
@@ -32,7 +32,7 @@
                         Rejoin your command center.
                     </h1>
                     {{-- <p class="mt-3 text-gray-500 text-sm">
-                        Sign in to sync mentions, generate on-brand tweets, and keep competitor intelligence streaming into Tweet-Hunt.
+                        Sign in to sync mentions, generate on-brand tweets, and keep competitor intelligence streaming into xengager.
                     </p> --}}
                     <x-session-msg class="mt-4" />
 
@@ -46,7 +46,7 @@
                                 </span>
                                 <input id="email" name="email" type="email" autocomplete="email" required
                                     class="w-full rounded-2xl border border-gray-200 pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0b8a3d] focus:border-transparent placeholder:text-gray-400"
-                                    placeholder="you@tweet-hunt.com">
+                                    placeholder="you@xengager.com">
                             </div>
                         </div>
 
