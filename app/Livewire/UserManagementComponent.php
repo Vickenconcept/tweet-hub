@@ -19,6 +19,13 @@ class UserManagementComponent extends Component
     public $successMessage = '';
     public $searchQuery = '';
     public $perPage = 10;
+    public $lastRefresh = '';
+    private $isLoading = false; // Prevent concurrent loads
+
+    // Rate limit properties
+    public $isRateLimited = false;
+    public $rateLimitResetTime = '';
+    public $rateLimitWaitMinutes = 0;
 
     // Advanced search properties
     public $searchInBio = false;
@@ -45,76 +52,197 @@ class UserManagementComponent extends Component
 
     public function mount()
     {
-        $this->loadData();
+        // Check rate limit status on mount
+        $this->checkRateLimitStatus();
+        $this->loadData(false);
     }
 
-    public function loadData()
+    public function checkRateLimitStatus()
     {
+        $user = Auth::user();
+        if ($user) {
+            $settings = $this->getTwitterSettings();
+            $twitterService = new TwitterService($settings);
+            $rateLimitCheck = $twitterService->isRateLimitedForFollowers();
+            
+            Log::info('🔍 Rate limit status check (Followers)', [
+                'rate_limited' => $rateLimitCheck['rate_limited'] ?? false,
+                'reset_time' => $rateLimitCheck['reset_time'] ?? 'none',
+                'wait_minutes' => $rateLimitCheck['wait_minutes'] ?? 0
+            ]);
+            
+            if ($rateLimitCheck['rate_limited']) {
+                $this->isRateLimited = true;
+                $this->rateLimitResetTime = $rateLimitCheck['reset_time'];
+                $this->rateLimitWaitMinutes = $rateLimitCheck['wait_minutes'];
+                Log::warning('🚫 Rate limit ACTIVE - UI updated (Followers)', [
+                    'reset_time' => $this->rateLimitResetTime,
+                    'wait_minutes' => $this->rateLimitWaitMinutes
+                ]);
+            } else {
+                $this->isRateLimited = false;
+                $this->rateLimitResetTime = '';
+                $this->rateLimitWaitMinutes = 0;
+            }
+        }
+    }
+
+    public function loadData($forceRefresh = false)
+    {
+        // Always check rate limit status before making API calls
+        $this->checkRateLimitStatus();
+        
+        // If rate limited, only allow cache load, not API calls
+        if ($this->isRateLimited && $forceRefresh) {
+            $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+            return;
+        }
+        
+        // Prevent concurrent loads
+        if ($this->isLoading) {
+            Log::info('Load already in progress, skipping duplicate request');
+            return;
+        }
+        
+        $this->isLoading = true;
         $this->loading = true;
         $this->errorMessage = '';
         $this->successMessage = '';
+
+        $user = Auth::user();
+        if (!$user) {
+            $this->errorMessage = 'User not authenticated.';
+            $this->loading = false;
+            $this->isLoading = false;
+            return;
+        }
+
+        if (!$user->twitter_account_connected || !$user->twitter_account_id || !$user->twitter_access_token || !$user->twitter_access_token_secret) {
+            $this->errorMessage = 'Please connect your Twitter account first.';
+            $this->loading = false;
+            $this->isLoading = false;
+            return;
+        }
+
+        // Define cache keys
+        $cacheKeyBase = "twitter_user_management_{$user->id}";
+        $followersCacheKey = "{$cacheKeyBase}_followers";
+        $followingCacheKey = "{$cacheKeyBase}_following";
+        $blockedCacheKey = "{$cacheKeyBase}_blocked";
+        $mutedCacheKey = "{$cacheKeyBase}_muted";
+        $userInfoCacheKey = "{$cacheKeyBase}_userinfo";
+
+        // Check cache first (only if not forcing refresh)
+        if (!$forceRefresh) {
+            $cachedFollowers = Cache::get($followersCacheKey);
+            $cachedFollowing = Cache::get($followingCacheKey);
+            $cachedBlocked = Cache::get($blockedCacheKey);
+            $cachedMuted = Cache::get($mutedCacheKey);
+            $cachedUserInfo = Cache::get($userInfoCacheKey);
+            
+            if ($cachedFollowers && $cachedFollowing) {
+                Log::info('✅ CACHE HIT: User management data loaded from cache (NO API CALL)', [
+                    'cache_key_base' => $cacheKeyBase,
+                    'followers_count' => count($cachedFollowers['data'] ?? []),
+                    'following_count' => count($cachedFollowing['data'] ?? []),
+                    'last_updated' => $cachedFollowers['timestamp'] ?? 'unknown',
+                    'timestamp' => now()->format('Y-m-d H:i:s')
+                ]);
+                
+                $this->followers = $cachedFollowers['data'] ?? [];
+                $this->following = $cachedFollowing['data'] ?? [];
+                $this->blockedUsers = $cachedBlocked['data'] ?? [];
+                $this->mutedUsers = $cachedMuted['data'] ?? [];
+                $this->basicUserInfo = $cachedUserInfo['data'] ?? null;
+                $this->lastRefresh = $cachedFollowers['timestamp'] ?? now()->format('M j, Y g:i A');
+                
+                // Perform mutual analysis on cached data
+                $this->performMutualAnalysis();
+                
+                $this->successMessage = 'Data loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Refresh for fresh data.';
+                $this->loading = false;
+                $this->isLoading = false;
+                return;
+            }
+            
+            // If no cache and rate limited, don't make API call
+            if ($this->isRateLimited) {
+                Log::warning('🚫 Rate limited - skipping API call, no cache available');
+                $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s). Reset time: {$this->rateLimitResetTime}";
+                $this->loading = false;
+                $this->isLoading = false;
+                return;
+            }
+        } else {
+            Log::info('⚠️ FORCE REFRESH: Bypassing cache - this will make API calls');
+            
+            // If forcing refresh but rate limited, don't make API call
+            if ($this->isRateLimited) {
+                Log::warning('🚫 Rate limited - cannot force refresh');
+                $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+                $this->loading = false;
+                $this->isLoading = false;
+                return;
+            }
+        }
 
         try {
             $settings = $this->getTwitterSettings();
             $twitterService = new TwitterService($settings);
             
             // Load basic user info
-            $this->loadBasicUserInfo($twitterService);
+            $this->loadBasicUserInfo($twitterService, $userInfoCacheKey);
 
             // Load all user data
-            $this->loadFollowers($twitterService);
-            $this->loadFollowing($twitterService);
-            $this->loadBlockedUsers($twitterService);
-            $this->loadMutedUsers($twitterService);
+            $this->loadFollowers($twitterService, $followersCacheKey, $forceRefresh);
+            $this->loadFollowing($twitterService, $followingCacheKey, $forceRefresh);
+            $this->loadBlockedUsers($twitterService, $blockedCacheKey, $forceRefresh);
+            $this->loadMutedUsers($twitterService, $mutedCacheKey, $forceRefresh);
             
             // Perform mutual analysis
             $this->performMutualAnalysis();
+            
+            $this->lastRefresh = now()->format('M j, Y g:i A');
+            $this->successMessage = 'Data refreshed successfully!';
 
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to load data: ' . $e->getMessage();
             Log::error('Failed to load user management data', ['error' => $e->getMessage()]);
+            
+            // Check if it's a rate limit error
+            if (strpos($e->getMessage(), 'Rate limit') !== false) {
+                $this->checkRateLimitStatus();
+                if ($this->isRateLimited) {
+                    $this->errorMessage = "Rate limit exceeded. Please wait {$this->rateLimitWaitMinutes} minute(s) before trying again. Reset time: {$this->rateLimitResetTime}";
+                }
+            }
         } finally {
             $this->loading = false;
+            $this->isLoading = false;
         }
     }
 
-    private function loadBasicUserInfo($twitterService)
+    private function loadBasicUserInfo($twitterService, $cacheKey)
     {
         try {
-            $cacheKey = 'twitter_user_info_' . Auth::user()->id;
-            $cachedData = Cache::get($cacheKey);
-            
-            if ($cachedData && $cachedData['expires_at'] > now()) {
-                $this->basicUserInfo = $cachedData['data'];
-                return;
-            }
-            
             $me = $twitterService->findMe();
             if ($me && isset($me->data)) {
                 $this->basicUserInfo = $me->data;
 
-                // Cache the data for 10 minutes
+                // Cache the data for 4 hours
                 Cache::put($cacheKey, [
                     'data' => $me->data,
-                    'expires_at' => now()->addMinutes(10)
-                ], 600);
+                    'timestamp' => now()->format('M j, Y g:i A')
+                ], 14400);
             }
         } catch (\Exception $e) {
             Log::warning('Failed to load basic user info', ['error' => $e->getMessage()]);
         }
     }
 
-    private function loadFollowers($twitterService)
+    private function loadFollowers($twitterService, $cacheKey, $forceRefresh = false)
     {
         try {
-            $cacheKey = 'twitter_followers_' . Auth::user()->id;
-            $cachedData = Cache::get($cacheKey);
-            
-            if ($cachedData && $cachedData['expires_at'] > now()) {
-                $this->followers = $cachedData['data'];
-                return;
-            }
-            
             $followers = $twitterService->getFollowers();
             Log::info('Followers API Response', ['response' => $followers]);
             
@@ -122,13 +250,14 @@ class UserManagementComponent extends Component
                 $this->followers = $followers->data;
                 Log::info('Followers loaded successfully', ['count' => count($this->followers)]);
 
-                // Cache the data for 15 minutes
+                // Cache the data for 4 hours
                 Cache::put($cacheKey, [
                     'data' => $followers->data,
-                    'expires_at' => now()->addMinutes(15)
-                ], 900);
+                    'timestamp' => now()->format('M j, Y g:i A')
+                ], 14400);
             } else {
                 Log::warning('No followers data in response', ['response' => $followers]);
+                $this->followers = [];
             }
         } catch (\Exception $e) {
             Log::warning('Failed to load followers', ['error' => $e->getMessage()]);
@@ -137,59 +266,55 @@ class UserManagementComponent extends Component
             // Check if it's a setup issue
             if (strpos($e->getMessage(), 'client-not-enrolled') !== false || strpos($e->getMessage(), 'Twitter API Setup Required') !== false) {
                 $this->errorMessage = 'Twitter API Setup Required: Your app needs to be attached to a Project with Elevated access. Please visit the Twitter Developer Portal to set this up.';
+            } elseif (strpos($e->getMessage(), 'Rate limit') !== false) {
+                $this->checkRateLimitStatus();
+                throw $e; // Re-throw to be handled by loadData
             } else {
                 $this->errorMessage = 'Failed to load followers: ' . $e->getMessage();
             }
         }
     }
 
-    private function loadFollowing($twitterService)
+    private function loadFollowing($twitterService, $cacheKey, $forceRefresh = false)
     {
         try {
-            $cacheKey = 'twitter_following_' . Auth::user()->id;
-            $cachedData = Cache::get($cacheKey);
-            
-            if ($cachedData && $cachedData['expires_at'] > now()) {
-                $this->following = $cachedData['data'];
-                return;
-            }
-            
             $following = $twitterService->getFollowing();
             if ($following && isset($following->data)) {
                 $this->following = $following->data;
 
-                // Cache the data for 15 minutes
-            Cache::put($cacheKey, [
+                // Cache the data for 4 hours
+                Cache::put($cacheKey, [
                     'data' => $following->data,
-                    'expires_at' => now()->addMinutes(15)
-                ], 900);
+                    'timestamp' => now()->format('M j, Y g:i A')
+                ], 14400);
+            } else {
+                $this->following = [];
             }
         } catch (\Exception $e) {
             Log::warning('Failed to load following', ['error' => $e->getMessage()]);
             $this->following = [];
+            
+            if (strpos($e->getMessage(), 'Rate limit') !== false) {
+                $this->checkRateLimitStatus();
+                throw $e; // Re-throw to be handled by loadData
+            }
         }
     }
 
-    private function loadBlockedUsers($twitterService)
+    private function loadBlockedUsers($twitterService, $cacheKey, $forceRefresh = false)
     {
         try {
-            $cacheKey = 'twitter_blocked_' . Auth::user()->id;
-            $cachedData = Cache::get($cacheKey);
-            
-            if ($cachedData && $cachedData['expires_at'] > now()) {
-                $this->blockedUsers = $cachedData['data'];
-                return;
-            }
-            
             $blocked = $twitterService->getBlockedUsers();
             if ($blocked && isset($blocked->data)) {
                 $this->blockedUsers = $blocked->data;
 
-                // Cache the data for 15 minutes
-            Cache::put($cacheKey, [
+                // Cache the data for 4 hours
+                Cache::put($cacheKey, [
                     'data' => $blocked->data,
-                    'expires_at' => now()->addMinutes(15)
-                ], 900);
+                    'timestamp' => now()->format('M j, Y g:i A')
+                ], 14400);
+            } else {
+                $this->blockedUsers = [];
             }
         } catch (\Exception $e) {
             Log::warning('Failed to load blocked users', ['error' => $e->getMessage()]);
@@ -197,26 +322,20 @@ class UserManagementComponent extends Component
         }
     }
 
-    private function loadMutedUsers($twitterService)
+    private function loadMutedUsers($twitterService, $cacheKey, $forceRefresh = false)
     {
         try {
-            $cacheKey = 'twitter_muted_' . Auth::user()->id;
-            $cachedData = Cache::get($cacheKey);
-            
-            if ($cachedData && $cachedData['expires_at'] > now()) {
-                $this->mutedUsers = $cachedData['data'];
-                return;
-            }
-            
             $muted = $twitterService->getMutedUsers();
             if ($muted && isset($muted->data)) {
                 $this->mutedUsers = $muted->data;
 
-                // Cache the data for 15 minutes
-            Cache::put($cacheKey, [
+                // Cache the data for 4 hours
+                Cache::put($cacheKey, [
                     'data' => $muted->data,
-                    'expires_at' => now()->addMinutes(15)
-                ], 900);
+                    'timestamp' => now()->format('M j, Y g:i A')
+                ], 14400);
+            } else {
+                $this->mutedUsers = [];
             }
         } catch (\Exception $e) {
             Log::warning('Failed to load muted users', ['error' => $e->getMessage()]);
@@ -224,11 +343,60 @@ class UserManagementComponent extends Component
         }
     }
 
+    public function refreshData()
+    {
+        // Check rate limit before making request
+        $this->checkRateLimitStatus();
+        
+        if ($this->isRateLimited) {
+            $this->errorMessage = "Rate limit active. Please wait {$this->rateLimitWaitMinutes} minute(s) before refreshing. Reset time: {$this->rateLimitResetTime}";
+            // Don't clear cache when rate limited - try to load from existing cache
+            Log::warning('🚫 Refresh blocked - rate limited, attempting to load from existing cache');
+            
+            // Try to load from cache if available
+            $user = Auth::user();
+            if ($user) {
+                $cacheKeyBase = "twitter_user_management_{$user->id}";
+                $followersCacheKey = "{$cacheKeyBase}_followers";
+                $followingCacheKey = "{$cacheKeyBase}_following";
+                
+                $cachedFollowers = Cache::get($followersCacheKey);
+                $cachedFollowing = Cache::get($followingCacheKey);
+                
+                if ($cachedFollowers && $cachedFollowing) {
+                    Log::info('✅ Loading from cache while rate limited');
+                    $this->followers = $cachedFollowers['data'] ?? [];
+                    $this->following = $cachedFollowing['data'] ?? [];
+                    $this->lastRefresh = $cachedFollowers['timestamp'] ?? now()->format('M j, Y g:i A');
+                    $this->performMutualAnalysis();
+                    $this->successMessage = 'Showing cached data (rate limited). Cache updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '.';
+                }
+            }
+            return;
+        }
+        
+        // Clear cache to ensure fresh data
+        $user = Auth::user();
+        if ($user) {
+            $cacheKeyBase = "twitter_user_management_{$user->id}";
+            Cache::forget("{$cacheKeyBase}_followers");
+            Cache::forget("{$cacheKeyBase}_following");
+            Cache::forget("{$cacheKeyBase}_blocked");
+            Cache::forget("{$cacheKeyBase}_muted");
+            Cache::forget("{$cacheKeyBase}_userinfo");
+        }
+        
+        Log::info('Refreshing user management data - cache cleared, forcing fresh data fetch');
+        
+        // Then load fresh data with force refresh
+        $this->loadData(true);
+    }
+
     public function switchTab($tab)
     {
         $this->activeTab = $tab;
         $this->resetPage();
-        $this->loadData();
+        // Don't reload data on tab switch - use existing cached data
     }
 
     public function clearMessages()

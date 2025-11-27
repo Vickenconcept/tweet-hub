@@ -1,24 +1,43 @@
 <!-- User Management Component -->
 <div class="p-6 bg-white rounded-lg shadow-md">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold text-gray-900">User Management</h2>
-        <div class="flex space-x-2">
-            <button wire:click="checkApiAccess" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
-                <i class="bx bx-shield-check mr-2"></i>
-                <span wire:loading.remove>Check API</span>
-                <span wire:loading>Checking...</span>
-            </button>
-            <button wire:click="refreshData" 
-                    wire:loading.attr="disabled"
-                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                <i class="bx bx-refresh mr-2"></i>
-                <span wire:loading.remove>Refresh Data</span>
-                <span wire:loading>Refreshing...</span>
-            </button>
+    <div class="mb-6">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-2xl font-bold text-gray-900">Twitter Analytics</h2>
+            <div class="flex space-x-2">
+                <button wire:click="refreshData" 
+                        wire:loading.attr="disabled"
+                        @if($isRateLimited) disabled style="pointer-events: none;" onclick="return false;" @endif
+                        class="px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                               @if($isRateLimited)
+                                   text-gray-400 bg-gray-100 cursor-not-allowed opacity-50
+                               @else
+                                   text-white bg-blue-600 hover:bg-blue-700
+                               @endif">
+                    <i class="bx bx-sync mr-2"></i>
+                    <span wire:loading.remove wire:target="refreshData">
+                        @if($isRateLimited)
+                            Rate Limited
+                        @else
+                            Sync Fresh Data
+                        @endif
+                    </span>
+                    <span wire:loading wire:target="refreshData">Syncing...</span>
+                </button>
+            </div>
         </div>
+        <p class="text-gray-500 text-sm">
+            @if($isRateLimited)
+                <i class="bx bx-error-circle mr-1 text-orange-600"></i>
+                Rate Limited - Wait {{ $rateLimitWaitMinutes }} min(s) | Resets: {{ $rateLimitResetTime }}
+            @elseif($lastRefresh)
+                <i class="bx bx-check-circle mr-1 text-green-600"></i>
+                Last updated: {{ $lastRefresh }}
+            @else
+                <i class="bx bx-info-circle mr-1 text-blue-600"></i>
+                Analyze your Twitter followers and following
+            @endif
+        </p>
     </div>
 
     <!-- Info Box -->
@@ -34,7 +53,7 @@
                     <div><strong>Not Following:</strong> They follow you, you don't follow them</div>
                     <div><strong>Advanced Search:</strong> Filter by bio, followers count, verification, location</div>
                 </div>
-                <p class="mt-2 text-xs text-blue-600"><strong>Note:</strong> Some features require Elevated Access to Twitter API v2.</p>
+                <p class="mt-2 text-xs text-blue-600"><strong>Note:</strong> Some features require Elevated Access to Twitter API v2. Data is cached for 4 hours to avoid rate limits.</p>
             </div>
         </div>
     </div>
@@ -76,10 +95,18 @@
 
     <!-- Messages -->
     @if($errorMessage)
-        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg w-[40%] overflow-x-auto">
-            <div class="flex items-center">
+        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div class="flex items-start">
                 <i class="bx bx-error-circle text-red-500 mr-2"></i>
-                <span class="text-red-700">{{ $errorMessage }}</span>
+                <div class="flex-1">
+                    <p class="text-red-700">{{ $errorMessage }}</p>
+                    @if(str_contains($errorMessage, 'Rate limit'))
+                        <p class="text-sm mt-2 text-red-600">
+                            <i class="bx bx-info-circle mr-1"></i>
+                            Twitter API has rate limits to prevent abuse. Try again in a few minutes.
+                        </p>
+                    @endif
+                </div>
                 <button wire:click="clearMessages" class="ml-auto text-red-400 hover:text-red-600">
                     <i class="bx bx-x"></i>
                 </button>

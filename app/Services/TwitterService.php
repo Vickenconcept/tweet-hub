@@ -103,6 +103,30 @@ class TwitterService
     }
 
     /**
+     * Check if we're currently rate limited for followers/following API calls.
+     */
+    public function isRateLimitedForFollowers()
+    {
+        $rateLimitKey = 'twitter_rate_limit_followers_' . md5($this->settings['consumer_key'] ?? 'default');
+        $rateLimitInfo = \Illuminate\Support\Facades\Cache::get($rateLimitKey);
+        
+        if ($rateLimitInfo && isset($rateLimitInfo['reset_time'])) {
+            $resetTime = $rateLimitInfo['reset_time'];
+            if ($resetTime > time()) {
+                return [
+                    'rate_limited' => true,
+                    'reset_time' => $rateLimitInfo['reset_datetime'] ?? date('Y-m-d H:i:s', $resetTime),
+                    'wait_minutes' => ceil(($resetTime - time()) / 60),
+                    'remaining' => $rateLimitInfo['remaining'] ?? 0,
+                    'limit' => $rateLimitInfo['limit'] ?? 0
+                ];
+            }
+        }
+        
+        return ['rate_limited' => false];
+    }
+
+    /**
      * Find recent mentions for a user.
      */
     public function getRecentMentions($accountId)
@@ -1739,10 +1763,44 @@ class TwitterService
                 'query' => $params
             ]);
 
+            // Track rate limit from response headers
+            $rateLimitKey = 'twitter_rate_limit_followers_' . md5($this->settings['consumer_key'] ?? 'default');
+            if ($response->hasHeader('x-rate-limit-reset')) {
+                $resetTime = (int) $response->getHeaderLine('x-rate-limit-reset');
+                $remaining = $response->hasHeader('x-rate-limit-remaining') ? (int) $response->getHeaderLine('x-rate-limit-remaining') : 0;
+                $limit = $response->hasHeader('x-rate-limit-limit') ? (int) $response->getHeaderLine('x-rate-limit-limit') : 0;
+                
+                \Illuminate\Support\Facades\Cache::put($rateLimitKey, [
+                    'reset_time' => $resetTime,
+                    'reset_datetime' => date('Y-m-d H:i:s', $resetTime),
+                    'remaining' => $remaining,
+                    'limit' => $limit
+                ], 900); // Cache for 15 minutes
+            }
+
             return json_decode($response->getBody()->getContents());
         } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $errorBody = $e->getResponse()->getBody()->getContents();
+            $response = $e->getResponse();
+            $statusCode = $response->getStatusCode();
+            $errorBody = $response->getBody()->getContents();
             $errorData = json_decode($errorBody, true);
+            
+            // Track rate limit from error response headers
+            if ($statusCode === 429) {
+                $rateLimitKey = 'twitter_rate_limit_followers_' . md5($this->settings['consumer_key'] ?? 'default');
+                if ($response->hasHeader('x-rate-limit-reset')) {
+                    $resetTime = (int) $response->getHeaderLine('x-rate-limit-reset');
+                    $remaining = $response->hasHeader('x-rate-limit-remaining') ? (int) $response->getHeaderLine('x-rate-limit-remaining') : 0;
+                    $limit = $response->hasHeader('x-rate-limit-limit') ? (int) $response->getHeaderLine('x-rate-limit-limit') : 0;
+                    
+                    \Illuminate\Support\Facades\Cache::put($rateLimitKey, [
+                        'reset_time' => $resetTime,
+                        'reset_datetime' => date('Y-m-d H:i:s', $resetTime),
+                        'remaining' => $remaining,
+                        'limit' => $limit
+                    ], 900);
+                }
+            }
             
             // Check if it's a client-not-enrolled error
             if (isset($errorData['reason']) && $errorData['reason'] === 'client-not-enrolled') {
@@ -1793,9 +1851,44 @@ class TwitterService
                 'query' => $params
             ]);
 
+            // Track rate limit from response headers
+            $rateLimitKey = 'twitter_rate_limit_followers_' . md5($this->settings['consumer_key'] ?? 'default');
+            if ($response->hasHeader('x-rate-limit-reset')) {
+                $resetTime = (int) $response->getHeaderLine('x-rate-limit-reset');
+                $remaining = $response->hasHeader('x-rate-limit-remaining') ? (int) $response->getHeaderLine('x-rate-limit-remaining') : 0;
+                $limit = $response->hasHeader('x-rate-limit-limit') ? (int) $response->getHeaderLine('x-rate-limit-limit') : 0;
+                
+                \Illuminate\Support\Facades\Cache::put($rateLimitKey, [
+                    'reset_time' => $resetTime,
+                    'reset_datetime' => date('Y-m-d H:i:s', $resetTime),
+                    'remaining' => $remaining,
+                    'limit' => $limit
+                ], 900); // Cache for 15 minutes
+            }
+
             return json_decode($response->getBody()->getContents());
         } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $errorBody = $e->getResponse()->getBody()->getContents();
+            $response = $e->getResponse();
+            $statusCode = $response->getStatusCode();
+            $errorBody = $response->getBody()->getContents();
+            
+            // Track rate limit from error response headers
+            if ($statusCode === 429) {
+                $rateLimitKey = 'twitter_rate_limit_followers_' . md5($this->settings['consumer_key'] ?? 'default');
+                if ($response->hasHeader('x-rate-limit-reset')) {
+                    $resetTime = (int) $response->getHeaderLine('x-rate-limit-reset');
+                    $remaining = $response->hasHeader('x-rate-limit-remaining') ? (int) $response->getHeaderLine('x-rate-limit-remaining') : 0;
+                    $limit = $response->hasHeader('x-rate-limit-limit') ? (int) $response->getHeaderLine('x-rate-limit-limit') : 0;
+                    
+                    \Illuminate\Support\Facades\Cache::put($rateLimitKey, [
+                        'reset_time' => $resetTime,
+                        'reset_datetime' => date('Y-m-d H:i:s', $resetTime),
+                        'remaining' => $remaining,
+                        'limit' => $limit
+                    ], 900);
+                }
+            }
+            
             throw new \Exception('Twitter API error: ' . $errorBody);
         }
     }
