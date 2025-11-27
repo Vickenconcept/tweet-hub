@@ -106,13 +106,15 @@
                         <span class="font-medium">Bookmarks</span>
                     </a>
                 </li> --}}
-                {{-- <li>
+                <li>
                     <a href="{{ route('user-management') }}"
-                        class="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors group {{ request()->routeIs('user-management') ? 'bg-white text-black shadow font-semibold' : 'text-white hover:bg-gray-500 hover:text-white' }}">
-                        <i class="bx bx-user-circle text-xl {{ request()->routeIs('user-management') ? 'text-black' : 'text-indigo-200 group-hover:text-white' }}"></i>
-                        <span>User Management</span>
+                        class="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 group {{ request()->routeIs('user-management') ? 'bg-green-50 text-green-700 font-semibold shadow-sm' : 'text-gray-700 hover:bg-gray-50' }}">
+                        <div class="p-1.5 rounded-xl {{ request()->routeIs('user-management') ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200' }} transition-all duration-200">
+                            <i class="bx bx-users text-lg"></i>
+                        </div>
+                        <span class="text-sm">Twitter Analytics</span>
                     </a>
-                </li> --}}
+                </li>
                 <li>
                     <a href="{{ route('assets') }}"
                         class="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 group {{ request()->routeIs('assets') ? 'bg-green-50 text-green-700 font-semibold shadow-sm' : 'text-gray-700 hover:bg-gray-50' }}">

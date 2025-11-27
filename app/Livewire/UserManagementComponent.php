@@ -20,12 +20,26 @@ class UserManagementComponent extends Component
     public $searchQuery = '';
     public $perPage = 10;
 
+    // Advanced search properties
+    public $searchInBio = false;
+    public $minFollowers = '';
+    public $maxFollowers = '';
+    public $verifiedOnly = false;
+    public $locationFilter = '';
+
     // Data properties
     public $followers = [];
     public $following = [];
     public $blockedUsers = [];
     public $mutedUsers = [];
     public $basicUserInfo = null;
+    
+    // Mutual analysis data
+    public $mutualAnalysis = [
+        'following_not_followers' => [],
+        'followers_not_following' => [],
+        'mutual_followers' => []
+    ];
 
     protected $queryString = ['activeTab'];
 
@@ -52,6 +66,9 @@ class UserManagementComponent extends Component
             $this->loadFollowing($twitterService);
             $this->loadBlockedUsers($twitterService);
             $this->loadMutedUsers($twitterService);
+            
+            // Perform mutual analysis
+            $this->performMutualAnalysis();
 
         } catch (\Exception $e) {
             $this->errorMessage = 'Failed to load data: ' . $e->getMessage();
@@ -279,6 +296,12 @@ class UserManagementComponent extends Component
                 return $this->blockedUsers;
             case 'muted':
                 return $this->mutedUsers;
+            case 'mutual_analysis':
+                return $this->mutualAnalysis['mutual_followers'];
+            case 'following_not_followers':
+                return $this->mutualAnalysis['following_not_followers'];
+            case 'followers_not_following':
+                return $this->mutualAnalysis['followers_not_following'];
             default:
                 return [];
         }
@@ -288,17 +311,63 @@ class UserManagementComponent extends Component
     {
         $data = $this->getCurrentData();
         
-        if (empty($this->searchQuery)) {
+        if (empty($this->searchQuery) && !$this->searchInBio && empty($this->minFollowers) && 
+            empty($this->maxFollowers) && !$this->verifiedOnly && empty($this->locationFilter)) {
             return $data;
         }
 
         return array_filter($data, function ($user) {
-            $searchLower = strtolower($this->searchQuery);
-            return (
-                strpos(strtolower($user->name ?? ''), $searchLower) !== false ||
-                strpos(strtolower($user->username ?? ''), $searchLower) !== false ||
-                strpos(strtolower($user->description ?? ''), $searchLower) !== false
-            );
+            // Text search
+            if (!empty($this->searchQuery)) {
+                $searchLower = strtolower($this->searchQuery);
+                $matchesText = (
+                    strpos(strtolower($user->name ?? ''), $searchLower) !== false ||
+                    strpos(strtolower($user->username ?? ''), $searchLower) !== false
+                );
+                
+                if ($this->searchInBio) {
+                    $matchesText = $matchesText || strpos(strtolower($user->description ?? ''), $searchLower) !== false;
+                }
+                
+                if (!$matchesText) return false;
+            }
+            
+            // Bio search
+            if ($this->searchInBio && !empty($this->searchQuery)) {
+                $searchLower = strtolower($this->searchQuery);
+                if (strpos(strtolower($user->description ?? ''), $searchLower) === false) {
+                    return false;
+                }
+            }
+            
+            // Follower count filters
+            if (!empty($this->minFollowers) || !empty($this->maxFollowers)) {
+                $followerCount = $user->public_metrics->followers_count ?? 0;
+                
+                if (!empty($this->minFollowers) && $followerCount < (int)$this->minFollowers) {
+                    return false;
+                }
+                
+                if (!empty($this->maxFollowers) && $followerCount > (int)$this->maxFollowers) {
+                    return false;
+                }
+            }
+            
+            // Verified filter
+            if ($this->verifiedOnly && !($user->verified ?? false)) {
+                return false;
+            }
+            
+            // Location filter
+            if (!empty($this->locationFilter)) {
+                $locationLower = strtolower($this->locationFilter);
+                $userLocation = strtolower($user->location ?? $user->description ?? '');
+                if (strpos($userLocation, $locationLower) === false) {
+                    return false;
+                }
+            }
+            
+            return true;
         });
     }
 
@@ -331,6 +400,104 @@ class UserManagementComponent extends Component
             'consumer_secret' => config('services.twitter.api_key_secret'),
             'bearer_token' => config('services.twitter.bearer_token'),
         ];
+    }
+
+    /**
+     * Perform mutual followers analysis
+     */
+    public function performMutualAnalysis()
+    {
+        try {
+            $followerIds = collect($this->followers)->pluck('id')->toArray();
+            $followingIds = collect($this->following)->pluck('id')->toArray();
+            
+            // People you follow but don't follow you back
+            $followingNotFollowersIds = array_diff($followingIds, $followerIds);
+            $this->mutualAnalysis['following_not_followers'] = collect($this->following)
+                ->filter(function($user) use ($followingNotFollowersIds) {
+                    return in_array($user->id, $followingNotFollowersIds);
+                })->values()->toArray();
+            
+            // People who follow you but you don't follow back
+            $followersNotFollowingIds = array_diff($followerIds, $followingIds);
+            $this->mutualAnalysis['followers_not_following'] = collect($this->followers)
+                ->filter(function($user) use ($followersNotFollowingIds) {
+                    return in_array($user->id, $followersNotFollowingIds);
+                })->values()->toArray();
+            
+            // Mutual followers
+            $mutualIds = array_intersect($followerIds, $followingIds);
+            $this->mutualAnalysis['mutual_followers'] = collect($this->followers)
+                ->filter(function($user) use ($mutualIds) {
+                    return in_array($user->id, $mutualIds);
+                })->values()->toArray();
+                
+            Log::info('Mutual analysis completed', [
+                'following_not_followers' => count($this->mutualAnalysis['following_not_followers']),
+                'followers_not_following' => count($this->mutualAnalysis['followers_not_following']),
+                'mutual_followers' => count($this->mutualAnalysis['mutual_followers'])
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to perform mutual analysis', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Clear all filters
+     */
+    public function clearFilters()
+    {
+        $this->searchQuery = '';
+        $this->searchInBio = false;
+        $this->minFollowers = '';
+        $this->maxFollowers = '';
+        $this->verifiedOnly = false;
+        $this->locationFilter = '';
+        $this->resetPage();
+    }
+
+    /**
+     * Export current filtered data to CSV
+     */
+    public function exportData()
+    {
+        try {
+            $data = $this->getFilteredData();
+            $filename = $this->activeTab . '_export_' . date('Y-m-d_H-i-s') . '.csv';
+            
+            $headers = [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ];
+            
+            $callback = function() use ($data) {
+                $file = fopen('php://output', 'w');
+                fputcsv($file, ['Name', 'Username', 'Bio', 'Followers', 'Following', 'Tweets', 'Verified']);
+                
+                foreach ($data as $user) {
+                    fputcsv($file, [
+                        $user->name ?? '',
+                        $user->username ?? '',
+                        $user->description ?? '',
+                        $user->public_metrics->followers_count ?? 0,
+                        $user->public_metrics->following_count ?? 0,
+                        $user->public_metrics->tweet_count ?? 0,
+                        $user->verified ?? false ? 'Yes' : 'No'
+                    ]);
+                }
+                
+                fclose($file);
+            };
+            
+            $this->successMessage = 'Export started! Download will begin shortly.';
+            
+            return response()->stream($callback, 200, $headers);
+            
+        } catch (\Exception $e) {
+            $this->errorMessage = 'Export failed: ' . $e->getMessage();
+            Log::error('Export failed', ['error' => $e->getMessage()]);
+        }
     }
 
     public function render()

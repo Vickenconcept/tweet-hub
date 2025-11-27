@@ -26,9 +26,15 @@
         <div class="flex items-start">
             <i class="bx bx-info-circle text-blue-500 mr-2 mt-0.5"></i>
             <div class="text-sm text-blue-700">
-                <p class="font-medium mb-1">Your Twitter Account Data</p>
-                <p>View your followers, following, blocked, and muted users. Click "Check API" to test access, then "Refresh Data" to load your data.</p>
-                <p class="mt-2 text-xs text-blue-600"><strong>Note:</strong> Some features require Elevated Access to Twitter API v2. If data shows as 0, you may need to apply for elevated access in your Twitter Developer Portal.</p>
+                <p class="font-medium mb-1">Twitter Analytics & User Management</p>
+                <p>Analyze your followers, following, and discover mutual connections. Use advanced filters to find specific users and export data.</p>
+                <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div><strong>Mutual:</strong> Users who follow you and you follow back</div>
+                    <div><strong>Not Following Back:</strong> You follow them, they don't follow you</div>
+                    <div><strong>Not Following:</strong> They follow you, you don't follow them</div>
+                    <div><strong>Advanced Search:</strong> Filter by bio, followers count, verification, location</div>
+                </div>
+                <p class="mt-2 text-xs text-blue-600"><strong>Note:</strong> Some features require Elevated Access to Twitter API v2.</p>
             </div>
         </div>
     </div>
@@ -93,20 +99,72 @@
         </div>
     @endif
 
-    <!-- Search Bar -->
-    <div class="mb-6">
+    <!-- Advanced Search Bar -->
+    <div class="mb-6 space-y-4">
+        <!-- Main Search -->
         <div class="relative">
             <i class="bx bx-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
             <input wire:model.live.debounce.300ms="searchQuery" 
                    type="text" 
-                   placeholder="Search users by name or username..."
+                   placeholder="Search users by name, username, or bio..."
                    class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        
+        <!-- Advanced Filters -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div class="flex items-center space-x-2">
+                <input type="checkbox" wire:model.live="searchInBio" id="searchInBio" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <label for="searchInBio" class="text-sm text-gray-700">Search in bio</label>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <input type="checkbox" wire:model.live="verifiedOnly" id="verifiedOnly" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <label for="verifiedOnly" class="text-sm text-gray-700">Verified only</label>
+            </div>
+            
+            <div class="space-y-1">
+                <label class="text-xs text-gray-600">Min Followers</label>
+                <input wire:model.live.debounce.500ms="minFollowers" 
+                       type="number" 
+                       placeholder="0"
+                       class="w-full px-3 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            <div class="space-y-1">
+                <label class="text-xs text-gray-600">Max Followers</label>
+                <input wire:model.live.debounce.500ms="maxFollowers" 
+                       type="number" 
+                       placeholder="∞"
+                       class="w-full px-3 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            <div class="space-y-1">
+                <label class="text-xs text-gray-600">Location</label>
+                <input wire:model.live.debounce.500ms="locationFilter" 
+                       type="text" 
+                       placeholder="e.g. New York"
+                       class="w-full px-3 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            
+            <div class="flex items-end">
+                <button wire:click="clearFilters" 
+                        class="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors">
+                    <i class="bx bx-x mr-1"></i>Clear Filters
+                </button>
+            </div>
+            
+            <div class="flex items-end">
+                <button wire:click="exportData" 
+                        class="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded transition-colors">
+                    <i class="bx bx-download mr-1"></i>Export CSV
+                </button>
+            </div>
         </div>
     </div>
 
     <!-- Tabs -->
     <div class="border-b border-gray-200 mb-6">
-        <nav class="-mb-px flex space-x-8">
+        <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
             <button wire:click="switchTab('followers')" 
                     class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'followers' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
                 Followers
@@ -121,16 +179,40 @@
                     {{ count($following) }}
                 </span>
             </button>
+            
+            <!-- Mutual Analysis Tabs -->
+            <button wire:click="switchTab('mutual_analysis')" 
+                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'mutual_analysis' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                <i class="bx bx-group mr-1"></i>Mutual
+                <span class="ml-2 bg-green-100 text-green-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
+                    {{ count($mutualAnalysis['mutual_followers']) }}
+                </span>
+            </button>
+            <button wire:click="switchTab('following_not_followers')" 
+                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'following_not_followers' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                <i class="bx bx-user-minus mr-1"></i>Not Following Back
+                <span class="ml-2 bg-orange-100 text-orange-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
+                    {{ count($mutualAnalysis['following_not_followers']) }}
+                </span>
+            </button>
+            <button wire:click="switchTab('followers_not_following')" 
+                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'followers_not_following' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                <i class="bx bx-user-plus mr-1"></i>Not Following
+                <span class="ml-2 bg-purple-100 text-purple-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
+                    {{ count($mutualAnalysis['followers_not_following']) }}
+                </span>
+            </button>
+            
             <button wire:click="switchTab('blocked')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'blocked' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                Blocked Users
+                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'blocked' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                Blocked
                 <span class="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
                     {{ count($blockedUsers) }}
                 </span>
             </button>
             <button wire:click="switchTab('muted')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'muted' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                Muted Users
+                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'muted' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                Muted
                 <span class="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
                     {{ count($mutedUsers) }}
                 </span>
@@ -256,6 +338,12 @@
                             You haven't blocked any users.
                         @elseif($activeTab === 'muted')
                             You haven't muted any users.
+                        @elseif($activeTab === 'mutual_analysis')
+                            No mutual followers found. These are users who follow you and you follow back.
+                        @elseif($activeTab === 'following_not_followers')
+                            Great! All the people you follow also follow you back.
+                        @elseif($activeTab === 'followers_not_following')
+                            You're following all your followers back.
                         @endif
                     </p>
                 @endif
