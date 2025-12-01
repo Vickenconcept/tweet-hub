@@ -34,6 +34,8 @@ class User extends Authenticatable
         'default_niche',
         'last_daily_ideas_generated',
         'monitored_keywords',
+        'auto_reply_mentions_enabled',
+        'auto_reply_keywords_enabled',
         'timezone',
     ];
 

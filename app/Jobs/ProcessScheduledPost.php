@@ -135,13 +135,30 @@ class ProcessScheduledPost implements ShouldQueue
                 'media_ids' => $mediaIds,
             ]);
 
-            $response = $twitter->createTweet($this->post->content, $mediaIds);
+            try {
+                $response = $twitter->createTweet($this->post->content, $mediaIds);
 
-            Log::info('Twitter API response', [
-                'post_id' => $this->post->id,
-                'user_id' => $user->id,
-                'response' => $response,
-            ]);
+                Log::info('Twitter API response (scheduled post)', [
+                    'post_id' => $this->post->id,
+                    'user_id' => $user->id,
+                    'response' => $response,
+                ]);
+            } catch (\GuzzleHttp\Exception\ClientException $e) {
+                $response = $e->getResponse();
+                $statusCode = $response ? $response->getStatusCode() : null;
+                $body = $response ? $response->getBody()->getContents() : null;
+
+                Log::error('Twitter API client error while posting scheduled tweet', [
+                    'post_id' => $this->post->id,
+                    'user_id' => $user->id,
+                    'status_code' => $statusCode,
+                    'error_body' => $body,
+                    'message' => $e->getMessage(),
+                ]);
+
+                // Re-throw so our outer catch can mark the post as failed
+                throw $e;
+            }
 
             // Mark as sent
             $this->post->update([

@@ -104,17 +104,40 @@
                         </label>
                     </div>
                     <div class="flex gap-3">
-                        <button type="submit" class="flex-1 inline-flex justify-center items-center rounded-2xl bg-green-600 text-white py-3 font-semibold hover:bg-green-700 transition cursor-pointer">
-                            @if($saving)
+                        <button
+                            type="submit"
+                            wire:target="saveProfile"
+                            wire:loading.attr="disabled"
+                            class="flex-1 inline-flex justify-center items-center rounded-2xl bg-green-600 text-white py-3 font-semibold hover:bg-green-700 transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                        >
+                            <span wire:loading.remove wire:target="saveProfile">
+                                Save profile
+                            </span>
+                            <p wire:loading wire:target="saveProfile" class="inline-flex items-center">
                                 <svg class="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4"></path>
                                 </svg>
-                            @endif
-                            Save profile
+                                <span>Saving...</span>
+                            </p>
                         </button>
-                        <button type="button" wire:click="generateToday" class="px-4 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold hover:border-green-300 hover:text-green-600 transition cursor-pointer">
-                            Generate today
+                        <button
+                            type="button"
+                            wire:click="generateToday"
+                            wire:target="generateToday"
+                            wire:loading.attr="disabled"
+                            class="px-4 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold hover:border-green-300 hover:text-green-600 transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed inline-flex items-center justify-center"
+                        >
+                            <span wire:loading.remove wire:target="generateToday">
+                                Generate today
+                            </span>
+                            <p wire:loading wire:target="generateToday" class="inline-flex items-center">
+                                <svg class="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4"></path>
+                                </svg>
+                                <span>Generating...</span>
+                            </p>
                         </button>
                     </div>
                 </form>
@@ -219,8 +242,22 @@
                         </h3>
                     </div>
                     <div class="flex gap-3">
-                        <button wire:click="generateForDate('{{ $selectedDate }}', true)" class="px-4 py-2 rounded-2xl border border-gray-200 text-gray-700 hover:border-green-300 hover:text-green-600 text-sm font-semibold cursor-pointer">
-                            Regenerate
+                        <button
+                            wire:click="generateForDate('{{ $selectedDate }}', true)"
+                            wire:target="generateForDate('{{ $selectedDate }}', true)"
+                            wire:loading.attr="disabled"
+                            class="px-4 py-2 rounded-2xl border border-gray-200 text-gray-700 hover:border-green-300 hover:text-green-600 text-sm font-semibold cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed inline-flex items-center justify-center"
+                        >
+                            <span wire:loading.remove wire:target="generateForDate('{{ $selectedDate }}', true)">
+                                Regenerate
+                            </span>
+                            <p wire:loading wire:target="generateForDate('{{ $selectedDate }}', true)" class="inline-flex items-center">
+                                <svg class="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4"></path>
+                                </svg>
+                                <span>Regenerating...</span>
+                            </p>
                         </button>
                         @if($selectedPost && $selectedPost->post_id)
                             <a href="{{ route('queued-posts') }}" class="px-4 py-2 rounded-2xl bg-gray-900 text-white text-sm font-semibold hover:bg-black cursor-pointer">
@@ -265,8 +302,22 @@
                 @else
                     <div class="text-center py-12 text-gray-500">
                         <p>No post generated for this day yet.</p>
-                        <button wire:click="generateForDate('{{ $selectedDate }}')" class="mt-4 inline-flex items-center px-5 py-2.5 rounded-2xl bg-green-600 text-white font-semibold hover:bg-green-700 cursor-pointer">
-                            Generate now
+                        <button
+                            wire:click="generateForDate('{{ $selectedDate }}')"
+                            wire:target="generateForDate('{{ $selectedDate }}')"
+                            wire:loading.attr="disabled"
+                            class="mt-4 inline-flex items-center px-5 py-2.5 rounded-2xl bg-green-600 text-white font-semibold hover:bg-green-700 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                        >
+                            <span wire:loading.remove wire:target="generateForDate('{{ $selectedDate }}')">
+                                Generate now
+                            </span>
+                            <p wire:loading wire:target="generateForDate('{{ $selectedDate }}')" class="inline-flex items-center">
+                                <svg class="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4"></path>
+                                </svg>
+                                <span>Generating...</span>
+                            </p>
                         </button>
                     </div>
                 @endif

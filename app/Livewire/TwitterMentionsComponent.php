@@ -3,7 +3,10 @@
 namespace App\Livewire;
 
 use App\Models\User;
+use App\Models\AutoReply;
+use App\Services\ChatGptService;
 use App\Services\TwitterService;
+use App\Jobs\ProcessMentionAutoReplies;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
@@ -25,6 +28,13 @@ class TwitterMentionsComponent extends Component
     public $isRateLimited = false;
     public $rateLimitResetTime = '';
     public $rateLimitWaitMinutes = 0;
+    public $autoReplyEnabled = false;
+    /**
+     * IDs of mentions that have already been auto-replied by AI (for UI badge).
+     *
+     * @var array<int, string>
+     */
+    public $autoRepliedIds = [];
 
     public function mount()
     {
@@ -32,8 +42,30 @@ class TwitterMentionsComponent extends Component
         // This prevents page delay when opening
         Log::info('Page mounted - skipping immediate API call to prevent delay');
         
+        // Load user preference for auto-replies
+        $user = Auth::user();
+        if ($user) {
+            $this->autoReplyEnabled = (bool) ($user->auto_reply_mentions_enabled ?? false);
+        }
+
         // Check rate limit status on mount
         $this->checkRateLimitStatus();
+    }
+
+    /**
+     * Persist auto-reply preference when user toggles the switch.
+     */
+    public function updatedAutoReplyEnabled($value)
+    {
+        $user = Auth::user();
+        if ($user) {
+            $user->auto_reply_mentions_enabled = (bool) $value;
+            $user->save();
+
+            $this->successMessage = $value
+                ? 'AI auto-reply for mentions has been enabled.'
+                : 'AI auto-reply for mentions has been disabled.';
+        }
     }
     
     public function checkRateLimitStatus()
@@ -225,6 +257,30 @@ class TwitterMentionsComponent extends Component
                 $this->successMessage = "No mentions found. This could mean no one has mentioned you recently, or your account hasn't been mentioned yet.";
             }
 
+            // Update local cache of which mentions have been auto-replied already
+            $this->loadAutoRepliedIds($user);
+
+            // Trigger AI auto-replies in the background if enabled
+            if ($this->autoReplyEnabled && $mentionsCount > 0) {
+                // Prepare a lightweight payload for the job
+                $mentionPayloads = [];
+                foreach ($this->mentions as $mention) {
+                    $mentionPayloads[] = [
+                        'id' => is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null),
+                        'text' => is_object($mention) ? ($mention->text ?? '') : ($mention['text'] ?? ''),
+                        'author_id' => is_object($mention) ? ($mention->author_id ?? null) : ($mention['author_id'] ?? null),
+                    ];
+                }
+
+                Log::info('🤖 Dispatching ProcessMentionAutoReplies job', [
+                    'user_id' => $user->id,
+                    'mentions_count' => $mentionsCount,
+                    'source_type' => 'mention',
+                ]);
+
+                ProcessMentionAutoReplies::dispatch($user->id, $mentionPayloads, 'mention');
+            }
+
             // Cache the results for 4 hours to drastically reduce API calls
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
                 'data' => $this->mentions,
@@ -383,6 +439,162 @@ class TwitterMentionsComponent extends Component
 
         $this->loading = false;
         $this->isLoading = false;
+    }
+
+    /**
+     * Automatically reply to new mentions using AI, ensuring we don't reply twice.
+     */
+    protected function handleAutoRepliesForMentions(User $user): void
+    {
+        try {
+            $chatGptService = app(ChatGptService::class);
+
+            // Safety: limit how many auto replies we send per load to avoid rate limits
+            $maxAutoRepliesPerLoad = 5;
+            $autoRepliesSent = 0;
+            $skippedNoQuestion = 0;
+            $skippedSelf = 0;
+            $skippedAlready = 0;
+
+            Log::info('🤖 Starting AI auto-reply pass for mentions', [
+                'user_id' => $user->id,
+                'mentions_count' => count($this->mentions),
+                'max_auto_replies_per_load' => $maxAutoRepliesPerLoad,
+            ]);
+
+            foreach ($this->mentions as $mention) {
+                if ($autoRepliesSent >= $maxAutoRepliesPerLoad) {
+                    break;
+                }
+
+                $mentionId = is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null);
+                $mentionText = is_object($mention) ? ($mention->text ?? '') : ($mention['text'] ?? '');
+                $authorId = is_object($mention) ? ($mention->author_id ?? null) : ($mention['author_id'] ?? null);
+
+                if (!$mentionId || !$mentionText) {
+                    continue;
+                }
+
+                // Simple safeguard: only reply to question-like / engaged tweets
+                if (strpos($mentionText, '?') === false) {
+                    $skippedNoQuestion++;
+                    continue;
+                }
+
+                // Don't auto-reply to our own tweets
+                if ($authorId && $user->twitter_account_id && (string) $authorId === (string) $user->twitter_account_id) {
+                    $skippedSelf++;
+                    continue;
+                }
+
+                // Skip if we've already auto-replied to this mention
+                $alreadyReplied = AutoReply::where('user_id', $user->id)
+                    ->where('tweet_id', (string) $mentionId)
+                    ->where('source_type', 'mention')
+                    ->exists();
+
+                if ($alreadyReplied) {
+                    $skippedAlready++;
+                    continue;
+                }
+
+                // Build a prompt for a short, positive, thoughtful reply tailored to THIS user's brand
+                $brandName = $user->twitter_name ?: $user->name ?: 'your personal brand';
+                $handleUsername = ltrim((string) $user->twitter_username, '@');
+                $handle = $handleUsername ? '@' . $handleUsername : '@brand';
+                $prompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
+                    . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) to this tweet.\n"
+                    . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
+                    . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"
+                    . "If the tweet is offensive, political, or unsafe, politely decline instead of engaging.\n\n"
+                    . "Tweet content:\n\"{$mentionText}\"";
+
+                $replyText = trim($chatGptService->generateContent($prompt) ?? '');
+
+                // Basic safety checks
+                if ($replyText === '' || mb_strlen($replyText) > 280) {
+                    continue;
+                }
+
+                $settings = [
+                    'account_id' => $user->twitter_account_id,
+                    'access_token' => $user->twitter_access_token,
+                    'access_token_secret' => $user->twitter_access_token_secret,
+                    'consumer_key' => config('services.twitter.api_key'),
+                    'consumer_secret' => config('services.twitter.api_key_secret'),
+                    'bearer_token' => config('services.twitter.bearer_token'),
+                ];
+
+                $twitterService = new TwitterService($settings);
+
+                Log::info('🤖 Sending AI auto-reply to mention', [
+                    'user_id' => $user->id,
+                    'tweet_id' => $mentionId,
+                ]);
+
+                $response = $twitterService->createTweet(
+                    $replyText,
+                    [],
+                    $mentionId
+                );
+
+                if ($response && isset($response->data)) {
+                    AutoReply::create([
+                        'user_id' => $user->id,
+                        'tweet_id' => (string) $mentionId,
+                        'source_type' => 'mention',
+                        'original_text' => $mentionText,
+                        'reply_text' => $replyText,
+                        'replied_at' => now(),
+                    ]);
+
+                    $autoRepliesSent++;
+                    $this->autoRepliedIds[] = (string) $mentionId;
+                }
+            }
+
+            Log::info('🤖 Finished AI auto-reply pass for mentions', [
+                'user_id' => $user->id,
+                'auto_replies_sent' => $autoRepliesSent,
+                'skipped_no_question' => $skippedNoQuestion,
+                'skipped_self_mentions' => $skippedSelf,
+                'skipped_already_replied' => $skippedAlready,
+            ]);
+
+            if ($autoRepliesSent > 0) {
+                $this->dispatch('show-success', "{$autoRepliesSent} mention(s) auto-replied with AI.");
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to handle AI auto-replies for mentions', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Load IDs of mentions that already have an AI auto-reply (for UI badges).
+     */
+    protected function loadAutoRepliedIds(User $user): void
+    {
+        $ids = [];
+        foreach ($this->mentions as $mention) {
+            $mentionId = is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null);
+            if ($mentionId) {
+                $ids[] = (string) $mentionId;
+            }
+        }
+
+        if (empty($ids)) {
+            $this->autoRepliedIds = [];
+            return;
+        }
+
+        $this->autoRepliedIds = AutoReply::where('user_id', $user->id)
+            ->where('source_type', 'mention')
+            ->whereIn('tweet_id', $ids)
+            ->pluck('tweet_id')
+            ->map(fn ($id) => (string) $id)
+            ->toArray();
     }
 
     public function replyToMention($mentionId)

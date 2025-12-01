@@ -47,6 +47,9 @@ class UserManagementComponent extends Component
         'followers_not_following' => [],
         'mutual_followers' => []
     ];
+    
+    // Expanded user card
+    public $expandedUserId = null;
 
     protected $queryString = ['activeTab'];
 
@@ -405,13 +408,6 @@ class UserManagementComponent extends Component
         $this->successMessage = '';
     }
 
-    public function refreshData()
-    {
-        $this->clearCache();
-        $this->loadData();
-        $this->successMessage = 'Data refreshed successfully!';
-    }
-
     public function checkApiAccess()
     {
         try {
@@ -623,6 +619,15 @@ class UserManagementComponent extends Component
         $this->verifiedOnly = false;
         $this->locationFilter = '';
         $this->resetPage();
+    }
+
+    public function toggleUserCard($userId)
+    {
+        if ($this->expandedUserId === $userId) {
+            $this->expandedUserId = null;
+        } else {
+            $this->expandedUserId = $userId;
+        }
     }
 
     /**

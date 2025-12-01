@@ -112,7 +112,7 @@
                         <div class="p-1.5 rounded-xl {{ request()->routeIs('user-management') ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200' }} transition-all duration-200">
                             <i class="bx bx-users text-lg"></i>
                         </div>
-                        <span class="text-sm">Twitter Analytics</span>
+                        <span class="text-sm">User Management</span>
                     </a>
                 </li>
                 <li>

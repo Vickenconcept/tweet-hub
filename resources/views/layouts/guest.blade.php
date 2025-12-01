@@ -7,15 +7,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    @seo([
-        'title' => 'xengager',
-        'description' => 'xengager',
-        'image' => asset('images/login-image.png'),
+    @seo([  
+        'title' => 'xengager for X',
+        'description' => 'xengager for X',
+        'image' => asset('images/meta-image.png'),
         'site_name' => config('app.name'),
         'favicon' => asset('favicon.ico'),
     ])
 
-    <title>xengager</title>
+    <title>xengager for X</title>
 
     <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 

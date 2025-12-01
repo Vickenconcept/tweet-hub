@@ -21,6 +21,17 @@
                 </p>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                <!-- AI Auto-Reply Toggle -->
+                <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 mb-2 sm:mb-0 sm:mr-3">
+                    <div class="mr-3">
+                        <p class="text-xs font-semibold text-gray-700">AI Auto Reply</p>
+                        <p class="text-[11px] text-gray-500">Let AI reply automatically to matching tweets</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" wire:model.live="autoReplyEnabled" class="sr-only peer">
+                        <div class="w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                    </label>
+                </div>
                 <button type="button"
                         wire:click="refreshTweets" 
                         wire:loading.attr="disabled"
@@ -435,6 +446,11 @@
                                 <span class="text-xs text-green-600 bg-green-50 border border-green-200 px-2 py-1 rounded-lg">
                                     Keyword Match
                                 </span>
+                                @if(in_array((string) $tweetId, $autoRepliedIds ?? []))
+                                    <span class="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-lg">
+                                        AI auto-replied
+                                    </span>
+                                @endif
                             </div>
                             <p class="text-gray-800 mb-4 text-md leading-relaxed">{{ $text ?? 'No content' }}</p>
                             

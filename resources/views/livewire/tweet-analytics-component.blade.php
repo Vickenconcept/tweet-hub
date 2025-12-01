@@ -10,6 +10,7 @@
                 <p class="text-gray-500 mt-2 text-sm md:text-base">
                     <i class="bx bx-bar-chart-alt-2 mr-1 text-green-600"></i>
                     Analyze engagement metrics and interactions
+                    <span class="text-xs text-gray-400 ml-2">• Data cached for 1-2 hours to avoid rate limits</span>
                 </p>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">

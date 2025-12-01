@@ -3,7 +3,10 @@
 namespace App\Livewire;
 
 use App\Models\User;
+use App\Models\AutoReply;
+use App\Services\ChatGptService;
 use App\Services\TwitterService;
+use App\Jobs\ProcessMentionAutoReplies;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
@@ -27,6 +30,13 @@ class KeywordMonitoringComponent extends Component
     public $isRateLimited = false;
     public $rateLimitResetTime = '';
     public $rateLimitWaitMinutes = 0;
+    public $autoReplyEnabled = false;
+    /**
+     * IDs of tweets that have already been auto-replied by AI (for UI badge).
+     *
+     * @var array<int, string>
+     */
+    public $autoRepliedIds = [];
     
     // Advanced Search Properties
     public $advancedSearch = false;
@@ -66,12 +76,34 @@ class KeywordMonitoringComponent extends Component
         // This prevents page delay when opening
         Log::info('Keyword page mounted - skipping immediate API call to prevent delay');
         
+        // Load user preference for auto-replies on keyword results
+        $user = Auth::user();
+        if ($user) {
+            $this->autoReplyEnabled = (bool) ($user->auto_reply_keywords_enabled ?? false);
+        }
+
         // Check rate limit status on mount
         $this->checkRateLimitStatus();
         
         // Initialize tweets array
         $this->tweets = [];
         $this->lastRefresh = now()->format('M j, Y g:i A');
+    }
+
+    /**
+     * Persist auto-reply preference when user toggles the switch.
+     */
+    public function updatedAutoReplyEnabled($value)
+    {
+        $user = Auth::user();
+        if ($user) {
+            $user->auto_reply_keywords_enabled = (bool) $value;
+            $user->save();
+
+            $this->successMessage = $value
+                ? 'AI auto-reply for keyword results has been enabled.'
+                : 'AI auto-reply for keyword results has been disabled.';
+        }
     }
     
     public function checkRateLimitStatus()
@@ -378,6 +410,30 @@ class KeywordMonitoringComponent extends Component
             } else {
                 $this->successMessage = "No tweets found. Try adjusting your " . ($this->advancedSearch ? 'search criteria' : 'keywords') . " or check back later.";
             }
+
+            // Update local cache of which tweets have been auto-replied already
+            $this->loadAutoRepliedIds($user);
+
+            // Trigger AI auto-replies in the background if enabled
+            if ($this->autoReplyEnabled && $tweetCount > 0) {
+                $tweetPayloads = [];
+                foreach ($this->tweets as $tweet) {
+                    $tweetPayloads[] = [
+                        'id' => is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null),
+                        'text' => is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? ''),
+                        'author_id' => is_object($tweet) ? ($tweet->author_id ?? null) : ($tweet['author_id'] ?? null),
+                    ];
+                }
+
+                Log::info('🤖 Dispatching ProcessMentionAutoReplies job for keyword tweets', [
+                    'user_id' => $user->id,
+                    'tweets_count' => $tweetCount,
+                    'source_type' => 'keyword',
+                ]);
+
+                // Reuse the same job class; it only cares about user id + tweet payloads
+                ProcessMentionAutoReplies::dispatch($user->id, $tweetPayloads, 'keyword');
+            }
             
             // Cache the results for 4 hours to drastically reduce API calls
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
@@ -538,6 +594,142 @@ class KeywordMonitoringComponent extends Component
 
         $this->searchLoading = false;
         $this->isLoading = false;
+    }
+
+    /**
+     * Automatically reply to new keyword / search tweets using AI, ensuring we don't reply twice.
+     */
+    protected function handleAutoRepliesForTweets(User $user): void
+    {
+        try {
+            $chatGptService = app(ChatGptService::class);
+
+            // Safety: limit how many auto replies we send per load to avoid rate limits
+            $maxAutoRepliesPerLoad = 5;
+            $autoRepliesSent = 0;
+
+            foreach ($this->tweets as $tweet) {
+                if ($autoRepliesSent >= $maxAutoRepliesPerLoad) {
+                    break;
+                }
+
+                $tweetId = is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null);
+                $tweetText = is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? '');
+                $authorId = is_object($tweet) ? ($tweet->author_id ?? null) : ($tweet['author_id'] ?? null);
+
+                if (!$tweetId || !$tweetText) {
+                    continue;
+                }
+
+                // Simple safeguard: only reply to question-like / engaged tweets
+                if (strpos($tweetText, '?') === false) {
+                    continue;
+                }
+
+                // Don't auto-reply to our own tweets
+                if ($authorId && $user->twitter_account_id && (string) $authorId === (string) $user->twitter_account_id) {
+                    continue;
+                }
+
+                // Skip if we've already auto-replied to this tweet for keyword search
+                $alreadyReplied = AutoReply::where('user_id', $user->id)
+                    ->where('tweet_id', (string) $tweetId)
+                    ->where('source_type', 'keyword')
+                    ->exists();
+
+                if ($alreadyReplied) {
+                    continue;
+                }
+
+                // Build a prompt for a short, positive, thoughtful reply tailored to THIS user's brand
+                $brandName = $user->twitter_name ?: $user->name ?: 'your personal brand';
+                $handleUsername = ltrim((string) $user->twitter_username, '@');
+                $handle = $handleUsername ? '@' . $handleUsername : '@brand';
+                $prompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
+                    . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) to this tweet.\n"
+                    . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
+                    . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"
+                    . "If the tweet is offensive, political, or unsafe, politely decline instead of engaging.\n\n"
+                    . "Tweet content:\n\"{$tweetText}\"";
+
+                $replyText = trim($chatGptService->generateContent($prompt) ?? '');
+
+                // Basic safety checks
+                if ($replyText === '' || mb_strlen($replyText) > 280) {
+                    continue;
+                }
+
+                $settings = [
+                    'account_id' => $user->twitter_account_id,
+                    'access_token' => $user->twitter_access_token,
+                    'access_token_secret' => $user->twitter_access_token_secret,
+                    'consumer_key' => config('services.twitter.api_key'),
+                    'consumer_secret' => config('services.twitter.api_key_secret'),
+                    'bearer_token' => config('services.twitter.bearer_token'),
+                ];
+
+                $twitterService = new TwitterService($settings);
+
+                Log::info('🤖 Sending AI auto-reply to keyword tweet', [
+                    'user_id' => $user->id,
+                    'tweet_id' => $tweetId,
+                ]);
+
+                $response = $twitterService->createTweet(
+                    $replyText,
+                    [],
+                    $tweetId
+                );
+
+                if ($response && isset($response->data)) {
+                    AutoReply::create([
+                        'user_id' => $user->id,
+                        'tweet_id' => (string) $tweetId,
+                        'source_type' => 'keyword',
+                        'original_text' => $tweetText,
+                        'reply_text' => $replyText,
+                        'replied_at' => now(),
+                    ]);
+
+                    $autoRepliesSent++;
+                    $this->autoRepliedIds[] = (string) $tweetId;
+                }
+            }
+
+            if ($autoRepliesSent > 0) {
+                $this->dispatch('show-success', "{$autoRepliesSent} tweet(s) auto-replied with AI.");
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to handle AI auto-replies for keyword tweets', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Load IDs of tweets that already have an AI auto-reply (for UI badges).
+     */
+    protected function loadAutoRepliedIds(User $user): void
+    {
+        $ids = [];
+        foreach ($this->tweets as $tweet) {
+            $tweetId = is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null);
+            if ($tweetId) {
+                $ids[] = (string) $tweetId;
+            }
+        }
+
+        if (empty($ids)) {
+            $this->autoRepliedIds = [];
+            return;
+        }
+
+        $this->autoRepliedIds = AutoReply::where('user_id', $user->id)
+            ->where('source_type', 'keyword')
+            ->whereIn('tweet_id', $ids)
+            ->pluck('tweet_id')
+            ->map(fn ($id) => (string) $id)
+            ->toArray();
     }
 
     private function performAdvancedSearch($twitterService)

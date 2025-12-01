@@ -6,6 +6,7 @@ use App\Jobs\ProcessScheduledPost;
 use App\Jobs\ProcessScheduledThread;
 use App\Models\Post;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 class ProcessScheduledPosts extends Command
 {
@@ -14,12 +15,19 @@ class ProcessScheduledPosts extends Command
 
     public function handle()
     {
+        Log::info('🔄 Starting scheduled posts processing command');
+
         // Get all scheduled posts
         $posts = Post::where('status', 'scheduled')
             ->where('scheduled_at', '<=', now())
             ->orderBy('in_reply_to_post_id', 'asc') // Process parent posts first
             ->orderBy('id', 'asc') // Then by creation order
             ->get();
+
+        Log::info('📌 Found scheduled posts to process', [
+            'count' => $posts->count(),
+            'post_ids' => $posts->pluck('id')->all(),
+        ]);
 
         $dispatchedCount = 0;
         $processedThreadRoots = [];
@@ -32,6 +40,10 @@ class ProcessScheduledPosts extends Command
                 
                 // If we haven't processed this thread yet, process it
                 if (!in_array($rootPostId, $processedThreadRoots)) {
+                    Log::info('🧵 Dispatching scheduled thread for processing', [
+                        'root_post_id' => $rootPostId,
+                        'trigger_post_id' => $post->id,
+                    ]);
                     ProcessScheduledThread::dispatch($rootPostId);
                     $processedThreadRoots[] = $rootPostId;
                     $dispatchedCount++;
@@ -46,17 +58,28 @@ class ProcessScheduledPosts extends Command
                 if ($hasReplies) {
                     // This is a thread root with replies
                     if (!in_array($post->id, $processedThreadRoots)) {
+                        Log::info('🧵 Dispatching scheduled thread root for processing', [
+                            'root_post_id' => $post->id,
+                        ]);
                         ProcessScheduledThread::dispatch($post->id);
                         $processedThreadRoots[] = $post->id;
                         $dispatchedCount++;
                     }
                 } else {
                     // This is a single post
+                    Log::info('✉️ Dispatching single scheduled post for processing', [
+                        'post_id' => $post->id,
+                    ]);
                     ProcessScheduledPost::dispatch($post);
                     $dispatchedCount++;
                 }
             }
         }
+
+        Log::info('✅ Finished dispatching scheduled posts/threads', [
+            'dispatched_count' => $dispatchedCount,
+            'processed_thread_roots' => $processedThreadRoots,
+        ]);
 
         $this->info("Dispatched {$dispatchedCount} posts/threads for processing.");
     }

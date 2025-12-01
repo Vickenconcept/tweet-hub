@@ -262,39 +262,128 @@
         @if(count($this->getFilteredData()) > 0)
             <div class="space-y-4">
                 @foreach($this->getPaginatedData() as $user)
-                    <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                        <div class="flex items-center justify-between">
-                            <!-- User Info -->
-                            <div class="flex items-center space-x-3">
-                                <img src="{{ $user->profile_image_url ?? 'https://via.placeholder.com/40x40' }}" 
-                                     alt="{{ $user->name ?? 'User' }}" 
-                                     class="w-12 h-12 rounded-full">
-                                <div>
-                                    <h3 class="font-medium text-gray-900">{{ $user->name ?? 'Unknown User' }}</h3>
-                                    <p class="text-sm text-gray-500">@{{ $user->username ?? 'unknown' }}</p>
-                                    @if(isset($user->description))
-                                        <p class="text-sm text-gray-600 mt-1">{{ Str::limit($user->description, 120) }}</p>
-                                    @endif
-                                    @if(isset($user->public_metrics))
-                                        <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                                            <span><i class="bx bx-user mr-1"></i>{{ $user->public_metrics->followers_count ?? 0 }} followers</span>
-                                            <span><i class="bx bx-user-plus mr-1"></i>{{ $user->public_metrics->following_count ?? 0 }} following</span>
-                                            <span><i class="bx bx-message mr-1"></i>{{ $user->public_metrics->tweet_count ?? 0 }} tweets</span>
+                    @php
+                        $userId = $user->id ?? null;
+                        $isExpanded = $expandedUserId === $userId;
+                    @endphp
+                    <div class="border border-gray-200 rounded-lg hover:border-gray-300 transition-all {{ $isExpanded ? 'border-blue-300 shadow-md' : '' }}">
+                        <!-- Card Header - Clickable -->
+                        <div class="p-4 cursor-pointer hover:bg-gray-50 transition-colors" 
+                             wire:click="toggleUserCard('{{ $userId }}')">
+                            <div class="flex items-center justify-between">
+                                <!-- User Info -->
+                                <div class="flex items-center space-x-3 flex-1">
+                                    <img src="{{ $user->profile_image_url ?? 'https://via.placeholder.com/40x40' }}" 
+                                         alt="{{ $user->name ?? 'User' }}" 
+                                         class="w-12 h-12 rounded-full">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2">
+                                            <h3 class="font-medium text-gray-900">{{ $user->name ?? 'Unknown User' }}</h3>
+                                            @if(isset($user->verified) && $user->verified)
+                                                <i class="bx bx-check-circle text-blue-500" title="Verified"></i>
+                                            @endif
                                         </div>
-                                    @endif
+                                        <p class="text-sm text-gray-500">@{{ $user->username ?? 'unknown' }}</p>
+                                        @if(isset($user->description))
+                                            <p class="text-sm text-gray-600 mt-1 line-clamp-2">{{ $user->description }}</p>
+                                        @endif
+                                        @if(isset($user->public_metrics))
+                                            <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+                                                <span><i class="bx bx-user mr-1"></i>{{ number_format($user->public_metrics->followers_count ?? 0) }} followers</span>
+                                                <span><i class="bx bx-user-plus mr-1"></i>{{ number_format($user->public_metrics->following_count ?? 0) }} following</span>
+                                                <span><i class="bx bx-message mr-1"></i>{{ number_format($user->public_metrics->tweet_count ?? 0) }} tweets</span>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                <!-- Expand/Collapse Icon -->
+                                <div class="flex items-center space-x-2 ml-4">
+                                    <i class="bx {{ $isExpanded ? 'bx-chevron-up' : 'bx-chevron-down' }} text-gray-400 text-xl transition-transform"></i>
                                 </div>
                             </div>
-
-                            <!-- View Profile Link -->
-                            <div class="flex items-center space-x-2">
-                                <a href="https://twitter.com/{{ $user->username ?? 'unknown' }}" 
-                                   target="_blank" 
-                                   rel="noopener noreferrer"
-                                   class="px-3 py-2 text-sm text-blue-600 hover:bg-blue-100 rounded-lg transition-colors flex items-center">
-                                    <i class="bx bx-external-link mr-1"></i> View Profile
-                                </a>
-                            </div>
                         </div>
+
+                        <!-- Expanded Details -->
+                        @if($isExpanded)
+                            <div class="border-t border-gray-200 bg-gray-50 p-4 space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <!-- Full Bio -->
+                                    @if(isset($user->description))
+                                        <div class="md:col-span-2">
+                                            <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Bio</h4>
+                                            <p class="text-sm text-gray-700">{{ $user->description }}</p>
+                                        </div>
+                                    @endif
+
+                                    <!-- Metrics -->
+                                    @if(isset($user->public_metrics))
+                                        <div>
+                                            <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Metrics</h4>
+                                            <div class="space-y-2">
+                                                <div class="flex justify-between">
+                                                    <span class="text-sm text-gray-600">Followers:</span>
+                                                    <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->followers_count ?? 0) }}</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-sm text-gray-600">Following:</span>
+                                                    <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->following_count ?? 0) }}</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-sm text-gray-600">Tweets:</span>
+                                                    <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->tweet_count ?? 0) }}</span>
+                                                </div>
+                                                @if(isset($user->public_metrics->listed_count))
+                                                    <div class="flex justify-between">
+                                                        <span class="text-sm text-gray-600">Listed:</span>
+                                                        <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->listed_count) }}</span>
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endif
+
+                                    <!-- Account Info -->
+                                    <div>
+                                        <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Account Info</h4>
+                                        <div class="space-y-2">
+                                            @if(isset($user->verified))
+                                                <div class="flex items-center space-x-2">
+                                                    <span class="text-sm text-gray-600">Verified:</span>
+                                                    <span class="text-sm font-medium {{ $user->verified ? 'text-green-600' : 'text-gray-400' }}">
+                                                        {{ $user->verified ? 'Yes' : 'No' }}
+                                                    </span>
+                                                </div>
+                                            @endif
+                                            @if(isset($user->location))
+                                                <div>
+                                                    <span class="text-sm text-gray-600">Location:</span>
+                                                    <span class="text-sm font-medium text-gray-900 ml-2">{{ $user->location }}</span>
+                                                </div>
+                                            @endif
+                                            @if(isset($user->created_at))
+                                                <div>
+                                                    <span class="text-sm text-gray-600">Joined:</span>
+                                                    <span class="text-sm font-medium text-gray-900 ml-2">
+                                                        {{ \Carbon\Carbon::parse($user->created_at)->format('M Y') }}
+                                                    </span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Actions -->
+                                <div class="flex items-center justify-end space-x-2 pt-4 border-t border-gray-200">
+                                    <a href="https://twitter.com/{{ $user->username ?? 'unknown' }}" 
+                                       target="_blank" 
+                                       rel="noopener noreferrer"
+                                       class="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center">
+                                        <i class="bx bx-external-link mr-2"></i> View on Twitter
+                                    </a>
+                                </div>
+                            </div>
+                        @endif
                     </div>
                 @endforeach
             </div>
