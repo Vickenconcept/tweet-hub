@@ -11,6 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -90,6 +91,7 @@ class ProcessMentionAutoReplies implements ShouldQueue
         $skippedNoNeed = 0;
         $skippedSelf = 0;
         $skippedAlready = 0;
+        $skippedAlreadyProcessed = 0;
         $rateLimited = false;
 
         Log::info('🤖 ProcessMentionAutoReplies started', [
@@ -110,6 +112,14 @@ class ProcessMentionAutoReplies implements ShouldQueue
 
         $twitterService = new TwitterService($settings);
 
+        // Load list of tweets we've already evaluated (either replied or decided to skip)
+        $seenCacheKey = "auto_reply_seen_{$this->sourceType}_{$this->userId}";
+        $seenIds = Cache::get($seenCacheKey, []);
+        if (!is_array($seenIds)) {
+            $seenIds = [];
+        }
+        $seenSet = array_flip(array_map('strval', $seenIds));
+
         // Randomize order so we don't always reply to the same "top" items first
         if (!empty($this->mentions)) {
             shuffle($this->mentions);
@@ -127,6 +137,17 @@ class ProcessMentionAutoReplies implements ShouldQueue
             $authorId = $mention['author_id'] ?? null;
 
             if (!$mentionId || !$mentionText) {
+                continue;
+            }
+
+            // Skip anything we've already processed in a previous job run (reply or explicit skip)
+            if (isset($seenSet[(string) $mentionId])) {
+                $skippedAlreadyProcessed++;
+                Log::info('🤖 [auto-reply] Skipping tweet - already processed in earlier batch', [
+                    'user_id' => $user->id,
+                    'source_type' => $this->sourceType,
+                    'tweet_id' => $mentionId,
+                ]);
                 continue;
             }
 
@@ -170,26 +191,40 @@ class ProcessMentionAutoReplies implements ShouldQueue
                 $handleUsername = ltrim((string) $user->twitter_username, '@');
                 $handle = $handleUsername ? '@' . $handleUsername : '@brand';
 
-                $shouldReplyPrompt = "You are an assistant for {$brandName} ({$handle}) on Twitter (X).\n"
-                    . "Decide if we should reply to this tweet. Reply ONLY with 'yes' or 'no'.\n"
-                    . "Reply 'yes' only if:\n"
-                    . "- The tweet is relevant to the brand or its audience, AND\n"
-                    . "- A short, helpful, positive reply would add value (e.g., question, feedback, comment we can acknowledge).\n"
-                    . "Reply 'no' if it looks like spam, pure promo, random tag list, unrelated content, offensive, or doesn't really need a reply.\n\n"
-                    . "Tweet:\n\"{$mentionText}\"";
+                // Different logic for keywords vs mentions
+                if ($this->sourceType === 'keyword') {
+                    // For keywords: Be more lenient - if it matches the keyword, engage unless it's spam/offensive
+                    $shouldReplyPrompt = "You are an assistant for {$brandName} ({$handle}) on Twitter (X).\n"
+                        . "This tweet was found because it contains a keyword we're monitoring.\n"
+                        . "Decide if we should reply. Reply ONLY with 'yes' or 'no'.\n"
+                        . "Reply 'yes' if the tweet is about the topic and we can add value with a helpful, positive comment.\n"
+                        . "Reply 'no' ONLY if it's clearly spam, offensive, or completely unrelated to the keyword topic.\n"
+                        . "Be lenient - if it's relevant to the keyword, we want to engage.\n\n"
+                        . "Tweet:\n\"{$mentionText}\"";
+                } else {
+                    // For mentions: Be more selective - is this person actually talking to us?
+                    $shouldReplyPrompt = "You are an assistant for {$brandName} ({$handle}) on Twitter (X).\n"
+                        . "Decide if we should reply to this tweet. Reply ONLY with 'yes' or 'no'.\n"
+                        . "Reply 'yes' only if:\n"
+                        . "- The tweet is relevant to the brand or its audience, AND\n"
+                        . "- A short, helpful, positive reply would add value (e.g., question, feedback, comment we can acknowledge).\n"
+                        . "Reply 'no' if it looks like spam, pure promo, random tag list, unrelated content, offensive, or doesn't really need a reply.\n\n"
+                        . "Tweet:\n\"{$mentionText}\"";
+                }
 
                 $decision = strtolower(trim($chatGptService->generateContent($shouldReplyPrompt) ?? ''));
 
-                if (!str_starts_with($decision, 'y')) {
-                    $skippedNoNeed++;
-                    Log::info('🤖 [auto-reply] Skipping tweet - AI judged no reply needed', [
-                        'user_id' => $user->id,
-                        'source_type' => $this->sourceType,
-                        'tweet_id' => $mentionId,
-                        'decision_raw' => $decision,
-                    ]);
-                    continue;
-                }
+            if (!str_starts_with($decision, 'y')) {
+                $skippedNoNeed++;
+                $seenSet[(string) $mentionId] = true;
+                Log::info('🤖 [auto-reply] Skipping tweet - AI judged no reply needed', [
+                    'user_id' => $user->id,
+                    'source_type' => $this->sourceType,
+                    'tweet_id' => $mentionId,
+                    'decision_raw' => $decision,
+                ]);
+                continue;
+            }
 
                 Log::info('🤖 [auto-reply] AI approved tweet for reply', [
                     'user_id' => $user->id,
@@ -199,12 +234,22 @@ class ProcessMentionAutoReplies implements ShouldQueue
                 ]);
 
                 // Step 2: generate the actual reply
-                $replyPrompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
-                    . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) to this tweet.\n"
-                    . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
-                    . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"
-                    . "If the tweet is offensive, political, or unsafe, politely decline instead of engaging.\n\n"
-                    . "Tweet content:\n\"{$mentionText}\"";
+                if ($this->sourceType === 'keyword') {
+                    $replyPrompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
+                        . "This tweet was found via keyword monitoring - we want to join the conversation about this topic.\n"
+                        . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) that adds value to the discussion.\n"
+                        . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
+                        . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"
+                        . "If the tweet is offensive, political, or unsafe, politely decline instead of engaging.\n\n"
+                        . "Tweet content:\n\"{$mentionText}\"";
+                } else {
+                    $replyPrompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
+                        . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) to this tweet.\n"
+                        . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
+                        . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"
+                        . "If the tweet is offensive, political, or unsafe, politely decline instead of engaging.\n\n"
+                        . "Tweet content:\n\"{$mentionText}\"";
+                }
 
                 $replyText = trim($chatGptService->generateContent($replyPrompt) ?? '');
             } catch (\Throwable $e) {
@@ -246,6 +291,7 @@ class ProcessMentionAutoReplies implements ShouldQueue
 
                     $autoRepliesSent++;
                     $lastProcessedIndex = $index;
+                    $seenSet[(string) $mentionId] = true;
                 }
             } catch (\Throwable $e) {
                 Log::error('🤖 ProcessMentionAutoReplies: failed to send AI reply', [
@@ -268,6 +314,10 @@ class ProcessMentionAutoReplies implements ShouldQueue
             }
         }
 
+        // Persist updated seen set (both replied and explicit "no need" decisions)
+        $finalSeenIds = array_keys($seenSet);
+        Cache::put($seenCacheKey, $finalSeenIds, now()->addDays(30));
+
         Log::info('🤖 ProcessMentionAutoReplies finished', [
             'user_id' => $user->id,
             'source_type' => $this->sourceType,
@@ -275,6 +325,8 @@ class ProcessMentionAutoReplies implements ShouldQueue
             'skipped_no_need_for_reply' => $skippedNoNeed,
             'skipped_self_mentions' => $skippedSelf,
             'skipped_already_replied' => $skippedAlready,
+            'skipped_already_processed' => $skippedAlreadyProcessed,
+            'total_seen_count' => count($finalSeenIds),
         ]);
 
         // If we hit the per-job limit and still have unprocessed items, chain another job.
