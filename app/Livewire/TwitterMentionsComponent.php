@@ -2,12 +2,14 @@
 
 namespace App\Livewire;
 
+use App\Models\TwitterAccount;
 use App\Models\User;
 use App\Models\AutoReply;
 use App\Services\ChatGptService;
 use App\Services\TwitterService;
 use App\Jobs\ProcessMentionAutoReplies;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 
@@ -29,6 +31,7 @@ class TwitterMentionsComponent extends Component
     public $rateLimitResetTime = '';
     public $rateLimitWaitMinutes = 0;
     public $autoReplyEnabled = false;
+    public $twitterAccountConfigured = false;
     /**
      * IDs of mentions that have already been auto-replied by AI (for UI badge).
      *
@@ -42,31 +45,20 @@ class TwitterMentionsComponent extends Component
         // This prevents page delay when opening
         Log::info('Page mounted - skipping immediate API call to prevent delay');
         
-        // Load user preference for auto-replies
+        // Load TwitterAccount status
         $user = Auth::user();
         if ($user) {
-            $this->autoReplyEnabled = (bool) ($user->auto_reply_mentions_enabled ?? false);
+            $twitterAccount = TwitterAccount::where('user_id', $user->id)->first();
+            $this->twitterAccountConfigured = $twitterAccount && $twitterAccount->isConfigured();
+            $this->autoReplyEnabled = $twitterAccount && $twitterAccount->isAutoEnabled();
         }
-
+        
         // Check rate limit status on mount
         $this->checkRateLimitStatus();
     }
 
-    /**
-     * Persist auto-reply preference when user toggles the switch.
-     */
-    public function updatedAutoReplyEnabled($value)
-    {
-        $user = Auth::user();
-        if ($user) {
-            $user->auto_reply_mentions_enabled = (bool) $value;
-            $user->save();
-
-            $this->successMessage = $value
-                ? 'AI auto-reply for mentions has been enabled.'
-                : 'AI auto-reply for mentions has been disabled.';
-        }
-    }
+    // Removed updatedAutoReplyEnabled - toggle is now read-only status indicator
+    // Users manage auto-comment settings in Twitter Settings page
     
     public function checkRateLimitStatus()
     {
@@ -162,6 +154,14 @@ class TwitterMentionsComponent extends Component
                 $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
                 $this->currentPage = 1; // Reset to first page when loading from cache
                 $this->successMessage = 'Mentions loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Sync for fresh data.';
+                
+                // Update local cache of which mentions have been auto-replied already
+                $this->loadAutoRepliedIds($user);
+                
+                // Trigger AI auto-replies even when loading from cache
+                $mentionsCount = count($this->mentions);
+                $this->triggerAutoReplyIfEnabled($user, $mentionsCount);
+                
                 $this->loading = false;
                 $this->isLoading = false;
                 return;
@@ -261,25 +261,7 @@ class TwitterMentionsComponent extends Component
             $this->loadAutoRepliedIds($user);
 
             // Trigger AI auto-replies in the background if enabled
-            if ($this->autoReplyEnabled && $mentionsCount > 0) {
-                // Prepare a lightweight payload for the job
-                $mentionPayloads = [];
-                foreach ($this->mentions as $mention) {
-                    $mentionPayloads[] = [
-                        'id' => is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null),
-                        'text' => is_object($mention) ? ($mention->text ?? '') : ($mention['text'] ?? ''),
-                        'author_id' => is_object($mention) ? ($mention->author_id ?? null) : ($mention['author_id'] ?? null),
-                    ];
-                }
-
-                Log::info('🤖 Dispatching ProcessMentionAutoReplies job', [
-                    'user_id' => $user->id,
-                    'mentions_count' => $mentionsCount,
-                    'source_type' => 'mention',
-                ]);
-
-                ProcessMentionAutoReplies::dispatch($user->id, $mentionPayloads, 'mention');
-            }
+            $this->triggerAutoReplyIfEnabled($user, $mentionsCount);
 
             // Cache the results for 4 hours to drastically reduce API calls
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
@@ -574,6 +556,76 @@ class TwitterMentionsComponent extends Component
     /**
      * Load IDs of mentions that already have an AI auto-reply (for UI badges).
      */
+    /**
+     * Trigger auto-reply job if conditions are met
+     */
+    protected function triggerAutoReplyIfEnabled(User $user, int $mentionsCount): void
+    {
+        Log::info('🔍 Checking if auto-reply should be triggered', [
+            'user_id' => $user->id,
+            'auto_reply_enabled' => $this->autoReplyEnabled,
+            'mentions_count' => $mentionsCount,
+            'twitter_account_configured' => $this->twitterAccountConfigured,
+        ]);
+
+        if ($this->autoReplyEnabled && $mentionsCount > 0) {
+            // Verify TwitterAccount is actually enabled
+            $twitterAccount = TwitterAccount::where('user_id', $user->id)->first();
+            $isActuallyEnabled = $twitterAccount && $twitterAccount->isAutoEnabled();
+
+            Log::info('✅ Auto-reply conditions met, preparing job dispatch', [
+                'user_id' => $user->id,
+                'mentions_count' => $mentionsCount,
+                'source_type' => 'mention',
+                'twitter_account_exists' => $twitterAccount !== null,
+                'is_configured' => $twitterAccount?->isConfigured() ?? false,
+                'is_auto_enabled' => $isActuallyEnabled,
+                'can_post' => $twitterAccount?->canPost() ?? false,
+                'comments_posted_today' => $twitterAccount?->comments_posted_today ?? 0,
+                'daily_limit' => $twitterAccount?->daily_comment_limit ?? 0,
+            ]);
+
+            if (!$isActuallyEnabled) {
+                Log::warning('⚠️ Auto-reply UI shows enabled but TwitterAccount is not actually enabled', [
+                    'user_id' => $user->id,
+                    'ui_shows_enabled' => $this->autoReplyEnabled,
+                ]);
+                return;
+            }
+
+            // Prepare a lightweight payload for the job
+            $mentionPayloads = [];
+            foreach ($this->mentions as $mention) {
+                $mentionPayloads[] = [
+                    'id' => is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null),
+                    'text' => is_object($mention) ? ($mention->text ?? '') : ($mention['text'] ?? ''),
+                    'author_id' => is_object($mention) ? ($mention->author_id ?? null) : ($mention['author_id'] ?? null),
+                ];
+            }
+
+            Log::info('🚀 Dispatching ProcessMentionAutoReplies job', [
+                'user_id' => $user->id,
+                'mentions_count' => $mentionsCount,
+                'payloads_count' => count($mentionPayloads),
+                'source_type' => 'mention',
+            ]);
+
+            ProcessMentionAutoReplies::dispatch($user->id, $mentionPayloads, 'mention');
+
+            Log::info('✅ ProcessMentionAutoReplies job dispatched successfully', [
+                'user_id' => $user->id,
+                'source_type' => 'mention',
+            ]);
+        } else {
+            Log::info('⏭️ Auto-reply not triggered', [
+                'user_id' => $user->id,
+                'auto_reply_enabled' => $this->autoReplyEnabled,
+                'mentions_count' => $mentionsCount,
+                'reason' => !$this->autoReplyEnabled ? 'auto-reply disabled in UI' : 'no mentions found',
+            ]);
+        }
+    }
+
     protected function loadAutoRepliedIds(User $user): void
     {
         $ids = [];
@@ -883,7 +935,7 @@ class TwitterMentionsComponent extends Component
             
             // Also clear from database cache table directly (only for this user)
             try {
-                $deletedRows = \DB::table('cache')
+                $deletedRows = DB::table('cache')
                     ->where(function($query) use ($userId) {
                         $query->where('key', 'like', "%twitter_mentions_{$userId}%")
                               ->orWhere('key', 'like', "%mentions_{$userId}%")
@@ -960,7 +1012,7 @@ class TwitterMentionsComponent extends Component
             
             // Clear from database cache table
             try {
-                $deletedRows = \DB::table('cache')
+                $deletedRows = DB::table('cache')
                     ->where('key', 'like', "%{$userId}%")
                     ->delete();
                     

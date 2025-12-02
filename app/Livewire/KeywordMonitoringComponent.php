@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\TwitterAccount;
 use App\Models\User;
 use App\Models\AutoReply;
 use App\Services\ChatGptService;
@@ -31,6 +32,7 @@ class KeywordMonitoringComponent extends Component
     public $rateLimitResetTime = '';
     public $rateLimitWaitMinutes = 0;
     public $autoReplyEnabled = false;
+    public $twitterAccountConfigured = false;
     /**
      * IDs of tweets that have already been auto-replied by AI (for UI badge).
      *
@@ -76,10 +78,12 @@ class KeywordMonitoringComponent extends Component
         // This prevents page delay when opening
         Log::info('Keyword page mounted - skipping immediate API call to prevent delay');
         
-        // Load user preference for auto-replies on keyword results
+        // Load TwitterAccount status
         $user = Auth::user();
         if ($user) {
-            $this->autoReplyEnabled = (bool) ($user->auto_reply_keywords_enabled ?? false);
+            $twitterAccount = TwitterAccount::where('user_id', $user->id)->first();
+            $this->twitterAccountConfigured = $twitterAccount && $twitterAccount->isConfigured();
+            $this->autoReplyEnabled = $twitterAccount && $twitterAccount->isAutoEnabled();
         }
 
         // Check rate limit status on mount
@@ -90,21 +94,9 @@ class KeywordMonitoringComponent extends Component
         $this->lastRefresh = now()->format('M j, Y g:i A');
     }
 
-    /**
-     * Persist auto-reply preference when user toggles the switch.
-     */
-    public function updatedAutoReplyEnabled($value)
-    {
-        $user = Auth::user();
-        if ($user) {
-            $user->auto_reply_keywords_enabled = (bool) $value;
-            $user->save();
-
-            $this->successMessage = $value
-                ? 'AI auto-reply for keyword results has been enabled.'
-                : 'AI auto-reply for keyword results has been disabled.';
-        }
-    }
+    // Removed updatedAutoReplyEnabled - toggle is now read-only status indicator
+    // Users manage auto-comment settings in Twitter Settings page
+    
     
     public function checkRateLimitStatus()
     {
@@ -269,6 +261,14 @@ class KeywordMonitoringComponent extends Component
                 $this->lastRefresh = $cachedTweets['timestamp'] ?? now()->format('M j, Y g:i A');
                 $this->currentPage = 1;
                 $this->successMessage = 'Tweets loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Refresh for fresh data.';
+                
+                // Update local cache of which tweets have been auto-replied already
+                $this->loadAutoRepliedIds($user);
+                
+                // Trigger AI auto-replies even when loading from cache
+                $tweetCount = count($this->tweets);
+                $this->triggerAutoReplyIfEnabled($user, $tweetCount);
+                
                 $this->searchLoading = false;
                 $this->isLoading = false;
                 return;
@@ -415,25 +415,7 @@ class KeywordMonitoringComponent extends Component
             $this->loadAutoRepliedIds($user);
 
             // Trigger AI auto-replies in the background if enabled
-            if ($this->autoReplyEnabled && $tweetCount > 0) {
-                $tweetPayloads = [];
-                foreach ($this->tweets as $tweet) {
-                    $tweetPayloads[] = [
-                        'id' => is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null),
-                        'text' => is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? ''),
-                        'author_id' => is_object($tweet) ? ($tweet->author_id ?? null) : ($tweet['author_id'] ?? null),
-                    ];
-                }
-
-                Log::info('🤖 Dispatching ProcessMentionAutoReplies job for keyword tweets', [
-                    'user_id' => $user->id,
-                    'tweets_count' => $tweetCount,
-                    'source_type' => 'keyword',
-                ]);
-
-                // Reuse the same job class; it only cares about user id + tweet payloads
-                ProcessMentionAutoReplies::dispatch($user->id, $tweetPayloads, 'keyword');
-            }
+            $this->triggerAutoReplyIfEnabled($user, $tweetCount);
             
             // Cache the results for 4 hours to drastically reduce API calls
             \Illuminate\Support\Facades\Cache::put($cacheKey, [
@@ -702,6 +684,76 @@ class KeywordMonitoringComponent extends Component
         } catch (\Exception $e) {
             Log::error('Failed to handle AI auto-replies for keyword tweets', [
                 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Trigger auto-reply job if conditions are met
+     */
+    protected function triggerAutoReplyIfEnabled(User $user, int $tweetCount): void
+    {
+        Log::info('🔍 Checking if auto-reply should be triggered (keywords)', [
+            'user_id' => $user->id,
+            'auto_reply_enabled' => $this->autoReplyEnabled,
+            'tweet_count' => $tweetCount,
+            'twitter_account_configured' => $this->twitterAccountConfigured,
+        ]);
+
+        if ($this->autoReplyEnabled && $tweetCount > 0) {
+            // Verify TwitterAccount is actually enabled
+            $twitterAccount = TwitterAccount::where('user_id', $user->id)->first();
+            $isActuallyEnabled = $twitterAccount && $twitterAccount->isAutoEnabled();
+
+            Log::info('✅ Auto-reply conditions met, preparing job dispatch (keywords)', [
+                'user_id' => $user->id,
+                'tweet_count' => $tweetCount,
+                'source_type' => 'keyword',
+                'twitter_account_exists' => $twitterAccount !== null,
+                'is_configured' => $twitterAccount?->isConfigured() ?? false,
+                'is_auto_enabled' => $isActuallyEnabled,
+                'can_post' => $twitterAccount?->canPost() ?? false,
+                'comments_posted_today' => $twitterAccount?->comments_posted_today ?? 0,
+                'daily_limit' => $twitterAccount?->daily_comment_limit ?? 0,
+            ]);
+
+            if (!$isActuallyEnabled) {
+                Log::warning('⚠️ Auto-reply UI shows enabled but TwitterAccount is not actually enabled (keywords)', [
+                    'user_id' => $user->id,
+                    'ui_shows_enabled' => $this->autoReplyEnabled,
+                ]);
+                return;
+            }
+
+            $tweetPayloads = [];
+            foreach ($this->tweets as $tweet) {
+                $tweetPayloads[] = [
+                    'id' => is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null),
+                    'text' => is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? ''),
+                    'author_id' => is_object($tweet) ? ($tweet->author_id ?? null) : ($tweet['author_id'] ?? null),
+                ];
+            }
+
+            Log::info('🚀 Dispatching ProcessMentionAutoReplies job for keyword tweets', [
+                'user_id' => $user->id,
+                'tweets_count' => $tweetCount,
+                'payloads_count' => count($tweetPayloads),
+                'source_type' => 'keyword',
+            ]);
+
+            // Reuse the same job class; it only cares about user id + tweet payloads
+            ProcessMentionAutoReplies::dispatch($user->id, $tweetPayloads, 'keyword');
+
+            Log::info('✅ ProcessMentionAutoReplies job dispatched successfully (keywords)', [
+                'user_id' => $user->id,
+                'source_type' => 'keyword',
+            ]);
+        } else {
+            Log::info('⏭️ Auto-reply not triggered (keywords)', [
+                'user_id' => $user->id,
+                'auto_reply_enabled' => $this->autoReplyEnabled,
+                'tweet_count' => $tweetCount,
+                'reason' => !$this->autoReplyEnabled ? 'auto-reply disabled in UI' : 'no tweets found',
             ]);
         }
     }

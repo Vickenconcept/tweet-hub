@@ -21,17 +21,44 @@
                 </p>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                <!-- AI Auto-Reply Toggle -->
-                <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 mb-2 sm:mb-0 sm:mr-3">
-                    <div class="mr-3">
-                        <p class="text-xs font-semibold text-gray-700">AI Auto Reply</p>
-                        <p class="text-[11px] text-gray-500">Let AI reply automatically to matching tweets</p>
+                <!-- AI Auto-Reply Status (Read-only) -->
+                @if($twitterAccountConfigured)
+                    <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 mb-2 sm:mb-0 sm:mr-3">
+                        <div class="mr-3">
+                            <p class="text-xs font-semibold text-gray-700">AI Auto Reply</p>
+                            <p class="text-[11px] text-gray-500">
+                                @if($autoReplyEnabled)
+                                    <span class="text-green-600 font-medium">Enabled</span> - 
+                                @else
+                                    <span class="text-gray-500">Disabled</span> - 
+                                @endif
+                                <a href="{{ route('twitter-settings') }}" class="text-blue-600 hover:underline">Manage in Settings</a>
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            @if($autoReplyEnabled)
+                                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                <span class="text-xs text-green-600 font-medium">ON</span>
+                            @else
+                                <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                <span class="text-xs text-gray-500">OFF</span>
+                            @endif
+                        </div>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" wire:model.live="autoReplyEnabled" class="sr-only peer">
-                        <div class="w-10 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                    </label>
-                </div>
+                @else
+                    <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 mb-2 sm:mb-0 sm:mr-3 opacity-60">
+                        <div class="mr-3">
+                            <p class="text-xs font-semibold text-gray-700">AI Auto Reply</p>
+                            <p class="text-[11px] text-gray-500">
+                                <a href="{{ route('twitter-settings') }}" class="text-blue-600 hover:underline">Configure API keys first</a>
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                            <span class="text-xs text-gray-500">OFF</span>
+                        </div>
+                    </div>
+                @endif
                 <button type="button"
                         wire:click="refreshTweets" 
                         wire:loading.attr="disabled"

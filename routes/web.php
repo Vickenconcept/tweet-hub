@@ -57,6 +57,7 @@ Route::middleware(['auth'])->group(function () {
     Route::view('assets', 'assets')->name('assets');
     Route::view('business-auto-posts', 'business-auto-posts')->name('business-auto-posts');
     Route::view('auto-direct-messages', 'auto-direct-messages')->name('auto-direct-messages');
+    Route::view('twitter-settings', 'twitter-settings')->name('twitter-settings');
     
     // Route::resource('reseller', ResellerController::class);
 
