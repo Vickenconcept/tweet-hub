@@ -875,9 +875,11 @@ class TwitterService
             ],
         ];
 
-        Log::info('Attempting to send Direct Message', [
+        Log::info('📤 TwitterService: Attempting to send Direct Message', [
             'recipient_id' => $recipientId,
             'char_count' => $charCount,
+            'endpoint' => $url,
+            'has_oauth_credentials' => !empty($accessToken) && !empty($accessTokenSecret),
         ]);
 
         try {
@@ -893,9 +895,10 @@ class TwitterService
             }
 
             if (isset($response['errors'])) {
-                Log::error('Twitter DM API returned errors', [
+                Log::error('❌ TwitterService: Twitter DM API returned errors', [
                     'recipient_id' => $recipientId,
                     'errors' => $response['errors'],
+                    'full_response' => $response,
                 ]);
 
                 return (object) [
@@ -907,9 +910,12 @@ class TwitterService
                 ];
             }
 
-            Log::info('Direct Message sent successfully', [
+            Log::info('✅ TwitterService: Direct Message sent successfully', [
                 'recipient_id' => $recipientId,
-                'response' => $response,
+                'event_id' => $response['event']['id'] ?? null,
+                'created_timestamp' => $response['event']['created_timestamp'] ?? null,
+                'message_id' => $response['event']['message_create']['message_data']['id'] ?? null,
+                'full_response' => $response,
             ]);
 
             return (object) [
@@ -924,17 +930,21 @@ class TwitterService
             $status = $res ? $res->getStatusCode() : null;
             $bodyText = $res ? $res->getBody()->getContents() : $e->getMessage();
 
-            Log::error('Twitter DM ClientException', [
+            Log::error('❌ TwitterService: Twitter DM ClientException (HTTP error)', [
                 'recipient_id' => $recipientId,
                 'status_code' => $status,
-                'body' => $bodyText,
+                'http_status' => $status,
+                'error_body' => $bodyText,
+                'endpoint' => $url,
             ]);
 
             throw $e;
         } catch (\Exception $e) {
-            Log::error('Twitter DM General Error', [
+            Log::error('❌ TwitterService: Twitter DM General Error', [
                 'recipient_id' => $recipientId,
-                'message' => $e->getMessage(),
+                'error_message' => $e->getMessage(),
+                'error_class' => get_class($e),
+                'endpoint' => $url,
             ]);
 
             throw $e;

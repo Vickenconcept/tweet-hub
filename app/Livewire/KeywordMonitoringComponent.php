@@ -258,6 +258,10 @@ class KeywordMonitoringComponent extends Component
                     'timestamp' => now()->format('Y-m-d H:i:s')
                 ]);
                 $this->tweets = $cachedTweets['data'] ?? [];
+                
+                // Filter out duplicate tweets by content before displaying
+                $this->deduplicateTweetsByContent();
+                
                 $this->lastRefresh = $cachedTweets['timestamp'] ?? now()->format('M j, Y g:i A');
                 $this->currentPage = 1;
                 $this->successMessage = 'Tweets loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Refresh for fresh data.';
@@ -400,6 +404,9 @@ class KeywordMonitoringComponent extends Component
 
                 $this->tweets = $allTweets;
             }
+
+            // Filter out duplicate tweets by content before displaying
+            $this->deduplicateTweetsByContent();
 
             $this->lastRefresh = now()->format('M j, Y g:i A');
             $this->currentPage = 1;
@@ -756,6 +763,57 @@ class KeywordMonitoringComponent extends Component
                 'reason' => !$this->autoReplyEnabled ? 'auto-reply disabled in UI' : 'no tweets found',
             ]);
         }
+    }
+
+    /**
+     * Filter out duplicate tweets by text content (normalizes and deduplicates)
+     */
+    protected function deduplicateTweetsByContent(): void
+    {
+        $uniqueTweets = [];
+        $seenTextHashes = [];
+        $duplicateCount = 0;
+        
+        foreach ($this->tweets as $tweet) {
+            $tweetId = is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null);
+            $tweetText = is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? '');
+            
+            // Normalize text: trim, lowercase, remove RT prefix, normalize whitespace
+            $normalizedText = mb_strtolower(trim($tweetText));
+            // Remove "RT @username: " prefix if present (retweets have this)
+            $normalizedText = preg_replace('/^rt\s+@\w+:\s*/i', '', $normalizedText);
+            // Normalize whitespace (multiple spaces to single space)
+            $normalizedText = preg_replace('/\s+/', ' ', trim($normalizedText));
+            
+            // Skip empty or very short texts
+            if (mb_strlen($normalizedText) < 10) {
+                continue;
+            }
+            
+            // Create a hash of the normalized text for comparison
+            $textHash = md5($normalizedText);
+            
+            // Skip if we've seen this exact text content before
+            if (isset($seenTextHashes[$textHash])) {
+                $duplicateCount++;
+                continue;
+            }
+            
+            // Track this text hash with the first tweet ID we saw it with
+            $seenTextHashes[$textHash] = $tweetId;
+            $uniqueTweets[] = $tweet;
+        }
+        
+        if ($duplicateCount > 0) {
+            Log::info('🔄 Filtered duplicate tweets by content (UI)', [
+                'user_id' => Auth::id(),
+                'original_count' => count($this->tweets),
+                'unique_count' => count($uniqueTweets),
+                'duplicates_removed' => $duplicateCount,
+            ]);
+        }
+        
+        $this->tweets = $uniqueTweets;
     }
 
     /**
@@ -1208,6 +1266,10 @@ class KeywordMonitoringComponent extends Component
                         'last_updated' => $cachedTweets['timestamp'] ?? 'unknown'
                     ]);
                     $this->tweets = $cachedTweets['data'] ?? [];
+                    
+                    // Filter out duplicate tweets by content before displaying
+                    $this->deduplicateTweetsByContent();
+                    
                     $this->lastRefresh = $cachedTweets['timestamp'] ?? now()->format('M j, Y g:i A');
                     $this->currentPage = 1;
                     $this->successMessage = 'Showing cached data (rate limited). Cache updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '.';

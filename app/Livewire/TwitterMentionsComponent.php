@@ -151,6 +151,10 @@ class TwitterMentionsComponent extends Component
                 ]);
                 $this->mentions = $cachedMentions['data'] ?? [];
                 $this->users = $cachedMentions['users'] ?? [];
+                
+                // Filter out duplicate mentions by content before displaying
+                $this->deduplicateMentionsByContent();
+                
                 $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
                 $this->currentPage = 1; // Reset to first page when loading from cache
                 $this->successMessage = 'Mentions loaded from cache (updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '). Click Sync for fresh data.';
@@ -245,6 +249,10 @@ class TwitterMentionsComponent extends Component
             } else {
                 throw new \Exception('Unexpected API response format: ' . gettype($mentionsResponse));
             }
+            
+            // Filter out duplicate mentions by content before displaying
+            $this->deduplicateMentionsByContent();
+            
             $this->lastRefresh = now()->format('M j, Y g:i A');
             $this->currentPage = 1; // Reset to first page when new mentions are loaded
 
@@ -550,6 +558,86 @@ class TwitterMentionsComponent extends Component
             Log::error('Failed to handle AI auto-replies for mentions', [
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * Filter out duplicate mentions by text content (normalizes and deduplicates)
+     */
+    protected function deduplicateMentionsByContent(): void
+    {
+        $uniqueMentions = [];
+        $uniqueUsers = [];
+        $seenTextHashes = [];
+        $duplicateCount = 0;
+        
+        foreach ($this->mentions as $mention) {
+            $mentionId = is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null);
+            $mentionText = is_object($mention) ? ($mention->text ?? '') : ($mention['text'] ?? '');
+            
+            // Normalize text: trim, lowercase, remove RT prefix, normalize whitespace
+            $normalizedText = mb_strtolower(trim($mentionText));
+            // Remove "RT @username: " prefix if present (retweets have this)
+            $normalizedText = preg_replace('/^rt\s+@\w+:\s*/i', '', $normalizedText);
+            // Normalize whitespace (multiple spaces to single space)
+            $normalizedText = preg_replace('/\s+/', ' ', trim($normalizedText));
+            
+            // Skip empty or very short texts
+            if (mb_strlen($normalizedText) < 10) {
+                continue;
+            }
+            
+            // Create a hash of the normalized text for comparison
+            $textHash = md5($normalizedText);
+            
+            // Skip if we've seen this exact text content before
+            if (isset($seenTextHashes[$textHash])) {
+                $duplicateCount++;
+                continue;
+            }
+            
+            // Track this text hash with the first tweet ID we saw it with
+            $seenTextHashes[$textHash] = $mentionId;
+            $uniqueMentions[] = $mention;
+            
+            // Also track unique users if available
+            if (!empty($this->users)) {
+                $authorId = is_object($mention) ? ($mention->author_id ?? null) : ($mention['author_id'] ?? null);
+                if ($authorId) {
+                    foreach ($this->users as $user) {
+                        $userId = is_object($user) ? ($user->id ?? null) : ($user['id'] ?? null);
+                        if ($userId && (string) $userId === (string) $authorId) {
+                            // Only add user if not already in uniqueUsers
+                            $userExists = false;
+                            foreach ($uniqueUsers as $uniqueUser) {
+                                $uniqueUserId = is_object($uniqueUser) ? ($uniqueUser->id ?? null) : ($uniqueUser['id'] ?? null);
+                                if ($uniqueUserId && (string) $uniqueUserId === (string) $authorId) {
+                                    $userExists = true;
+                                    break;
+                                }
+                            }
+                            if (!$userExists) {
+                                $uniqueUsers[] = $user;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if ($duplicateCount > 0) {
+            Log::info('🔄 Filtered duplicate mentions by content (UI)', [
+                'user_id' => Auth::id(),
+                'original_count' => count($this->mentions),
+                'unique_count' => count($uniqueMentions),
+                'duplicates_removed' => $duplicateCount,
+            ]);
+        }
+        
+        $this->mentions = $uniqueMentions;
+        if (!empty($uniqueUsers)) {
+            $this->users = $uniqueUsers;
         }
     }
 
@@ -861,6 +949,10 @@ class TwitterMentionsComponent extends Component
                     ]);
                     $this->mentions = $cachedMentions['data'] ?? [];
                     $this->users = $cachedMentions['users'] ?? [];
+                    
+                    // Filter out duplicate mentions by content before displaying
+                    $this->deduplicateMentionsByContent();
+                    
                     $this->lastRefresh = $cachedMentions['timestamp'] ?? now()->format('M j, Y g:i A');
                     $this->currentPage = 1;
                     $this->successMessage = 'Showing cached data (rate limited). Cache updated ' . \Carbon\Carbon::parse($this->lastRefresh)->diffForHumans() . '.';

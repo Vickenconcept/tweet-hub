@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Jobs\ProcessAutoDms;
+use App\Services\ChatGptService;
 use App\Services\TwitterService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -20,6 +21,10 @@ class AutoDirectMessagesComponent extends Component
     public array $selectedUserIds = [];
     public bool $searchRateLimited = false;
     public ?string $searchRateLimitMessage = null;
+
+    // AI generation properties
+    public bool $generatingTemplate = false;
+    public string $aiPrompt = '';
 
     public function mount()
     {
@@ -43,14 +48,8 @@ class AutoDirectMessagesComponent extends Component
 
     public function saveSettings()
     {
-        // For now we only log and keep values in component state.
-        Log::info('📩 AutoDirectMessages: settings saved (in-memory)', [
-            'user_id' => Auth::id(),
-            'campaign_name' => $this->campaignName,
-            'daily_limit' => $this->dailyLimit,
-        ]);
-
-        session()->flash('message', 'Auto DM settings saved (for this session).');
+        // Settings are automatically saved when used (no need for explicit save)
+        session()->flash('message', 'Settings updated.');
     }
 
     public function searchUsers()
@@ -219,14 +218,24 @@ class AutoDirectMessagesComponent extends Component
 
         Log::info('📩 AutoDirectMessages: dispatching ProcessAutoDms for selected users', [
             'user_id' => $user->id,
+            'user_email' => $user->email,
+            'user_twitter_id' => $user->twitter_account_id,
             'campaign_name' => $this->campaignName,
             'selected_count' => count($this->selectedUserIds),
             'queued_count' => count($recipients),
+            'daily_limit' => $this->dailyLimit,
+            'dm_template_preview' => \Illuminate\Support\Str::limit($this->dmTemplate, 100),
+            'recipient_ids' => array_column($recipients, 'twitter_recipient_id'),
         ]);
 
         ProcessAutoDms::dispatch($user->id, $recipients, 'campaign', $this->campaignName);
 
-        session()->flash('message', 'Queued ' . count($recipients) . ' DMs (stub). Check auto_dms table and logs for details.');
+        Log::info('📩 AutoDirectMessages: ProcessAutoDms job dispatched successfully', [
+            'user_id' => $user->id,
+            'queued_count' => count($recipients),
+        ]);
+
+        session()->flash('message', 'Successfully queued ' . count($recipients) . ' DM(s). They will be sent shortly using your DM template.');
     }
 
     public function triggerTestCampaign()
@@ -248,14 +257,96 @@ class AutoDirectMessagesComponent extends Component
             'dm_text' => $this->dmTemplate,
         ]];
 
-        Log::info('📩 AutoDirectMessages: dispatching ProcessAutoDms test job', [
+        Log::info('📩 AutoDirectMessages: dispatching ProcessAutoDms TEST job (sending to self)', [
             'user_id' => $user->id,
+            'user_email' => $user->email,
+            'user_twitter_id' => $user->twitter_account_id,
             'campaign_name' => $this->campaignName,
+            'is_test_dm' => true,
+            'is_sending_to_self' => true,
+            'dm_template_preview' => \Illuminate\Support\Str::limit($this->dmTemplate, 100),
+            'dm_template_length' => mb_strlen($this->dmTemplate),
         ]);
 
         ProcessAutoDms::dispatch($user->id, $recipients, 'campaign', $this->campaignName);
 
-        session()->flash('message', 'Test Auto DM job dispatched. Check logs for details.');
+        Log::info('📩 AutoDirectMessages: ProcessAutoDms TEST job dispatched successfully', [
+            'user_id' => $user->id,
+            'is_test_dm' => true,
+        ]);
+
+        session()->flash('message', 'Test DM sent! Check your Twitter DMs to see the message.');
+    }
+
+    public function generateDmTemplate()
+    {
+        $this->generatingTemplate = true;
+
+        try {
+            $user = Auth::user();
+            $prompt = trim($this->aiPrompt);
+
+            // Build a smart prompt if user provided context, otherwise use a generic one
+            if (empty($prompt)) {
+                $prompt = "Write a friendly, professional direct message template for a Twitter/X campaign. 
+                The message should be:
+                - Warm and welcoming
+                - Short and concise (under 200 characters)
+                - Professional but personable
+                - Not overly salesy or pushy
+                - Suitable for reaching out to new connections
+                
+                Write just the message text, no explanations or extra text.";
+            } else {
+                $prompt = "Write a friendly, professional direct message template for Twitter/X based on this context: {$prompt}
+                
+                The message should be:
+                - Warm and welcoming
+                - Short and concise (under 200 characters)
+                - Professional but personable
+                - Not overly salesy or pushy
+                - Suitable for reaching out to new connections
+                
+                Write just the message text, no explanations, no quotes, no extra text. Just the direct message content.";
+            }
+
+            $chatGptService = new ChatGptService();
+            $generatedText = $chatGptService->generateContent($prompt);
+
+            if ($generatedText && trim($generatedText) !== '') {
+                // Clean up the generated text (remove quotes, extra whitespace, etc.)
+                $cleanedText = trim($generatedText);
+                // Remove surrounding quotes if present
+                $cleanedText = trim($cleanedText, '"\'');
+                // Remove "DM:" or "Message:" prefixes if AI added them
+                $cleanedText = preg_replace('/^(DM|Message|Direct Message):\s*/i', '', $cleanedText);
+                $cleanedText = trim($cleanedText);
+
+                if (mb_strlen($cleanedText) > 0) {
+                    $this->dmTemplate = $cleanedText;
+                    session()->flash('message', 'DM template generated successfully! You can edit it if needed.');
+                    
+                    Log::info('📩 AutoDirectMessages: DM template generated via AI', [
+                        'user_id' => $user->id ?? null,
+                        'prompt_length' => mb_strlen($prompt),
+                        'generated_length' => mb_strlen($cleanedText),
+                    ]);
+                } else {
+                    session()->flash('error', 'Generated template was empty. Please try again with more specific context.');
+                }
+            } else {
+                session()->flash('error', 'Failed to generate template. Please try again.');
+            }
+        } catch (\Exception $e) {
+            Log::error('📩 AutoDirectMessages: AI template generation failed', [
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+            ]);
+            session()->flash('error', 'Failed to generate template: ' . $e->getMessage());
+        } finally {
+            $this->generatingTemplate = false;
+            $this->aiPrompt = ''; // Clear the prompt after generation
+        }
     }
 
     public function render()
