@@ -133,6 +133,15 @@
                         <span class="text-sm">Auto Daily Posts</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ route('auto-direct-messages') }}"
+                        class="flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 group {{ request()->routeIs('auto-direct-messages') ? 'bg-green-50 text-green-700 font-semibold shadow-sm' : 'text-gray-700 hover:bg-gray-50' }}">
+                        <div class="p-1.5 rounded-xl {{ request()->routeIs('auto-direct-messages') ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200' }} transition-all duration-200">
+                            <i class="bx bx-message-rounded-dots text-lg"></i>
+                        </div>
+                        <span class="text-sm">Auto DMs</span>
+                    </a>
+                </li>
            
                 {{-- <li>
                     <a href="{{ route('reseller.index') }}"

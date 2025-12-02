@@ -815,6 +815,133 @@ class TwitterService
     }
 
     /**
+     * Send a Direct Message (DM) to a user by recipient ID using Twitter API v1.1.
+     *
+     * Endpoint: POST https://api.twitter.com/1.1/direct_messages/events/new.json
+     *
+     * This requires:
+     * - App-level DM permissions in the Twitter Developer Portal
+     * - Valid user access_token/access_token_secret with DM scope
+     */
+    public function sendDirectMessage(string $recipientId, string $text)
+    {
+        // Basic validation – keep DMs non-empty and reasonably short
+        $charCount = mb_strlen($text, 'UTF-8');
+        if ($charCount === 0) {
+            throw new \Exception('DM text cannot be empty');
+        }
+        if ($charCount > 10000) {
+            // DMs can be longer than tweets, but let's be safe and cap it
+            $text = $this->truncateForTwitter($text, 10000);
+        }
+
+        // Ensure we have OAuth 1.0a credentials for the authenticated user
+        $consumerKey = $this->settings['consumer_key'] ?? config('services.twitter.api_key');
+        $consumerSecret = $this->settings['consumer_secret'] ?? config('services.twitter.api_key_secret');
+        $accessToken = $this->settings['access_token'] ?? null;
+        $accessTokenSecret = $this->settings['access_token_secret'] ?? null;
+
+        if (!$consumerKey || !$consumerSecret || !$accessToken || !$accessTokenSecret) {
+            Log::error('sendDirectMessage: missing OAuth credentials', [
+                'has_consumer_key' => (bool) $consumerKey,
+                'has_consumer_secret' => (bool) $consumerSecret,
+                'has_access_token' => (bool) $accessToken,
+                'has_access_token_secret' => (bool) $accessTokenSecret,
+            ]);
+            throw new \Exception('Twitter OAuth credentials missing for sending DMs.');
+        }
+
+        $oauthSettings = [
+            'consumer_key' => $consumerKey,
+            'consumer_secret' => $consumerSecret,
+            'access_token' => $accessToken,
+            'access_token_secret' => $accessTokenSecret,
+        ];
+
+        $url = 'https://api.twitter.com/1.1/direct_messages/events/new.json';
+
+        // Build DM event payload
+        $body = [
+            'event' => [
+                'type' => 'message_create',
+                'message_create' => [
+                    'target' => [
+                        'recipient_id' => $recipientId,
+                    ],
+                    'message_data' => [
+                        'text' => $text,
+                    ],
+                ],
+            ],
+        ];
+
+        Log::info('Attempting to send Direct Message', [
+            'recipient_id' => $recipientId,
+            'char_count' => $charCount,
+        ]);
+
+        try {
+            $responseJson = $this->makeOAuthJsonRequest('POST', $url, $body, $oauthSettings);
+            $response = json_decode($responseJson, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Log::warning('sendDirectMessage: failed to decode Twitter DM response', [
+                    'recipient_id' => $recipientId,
+                    'raw_response' => $responseJson,
+                    'json_error' => json_last_error_msg(),
+                ]);
+            }
+
+            if (isset($response['errors'])) {
+                Log::error('Twitter DM API returned errors', [
+                    'recipient_id' => $recipientId,
+                    'errors' => $response['errors'],
+                ]);
+
+                return (object) [
+                    'data' => [
+                        'sent' => false,
+                        'message' => 'Twitter DM API error: ' . json_encode($response['errors']),
+                    ],
+                    'raw' => $response,
+                ];
+            }
+
+            Log::info('Direct Message sent successfully', [
+                'recipient_id' => $recipientId,
+                'response' => $response,
+            ]);
+
+            return (object) [
+                'data' => [
+                    'sent' => true,
+                    'message' => 'DM sent successfully.',
+                ],
+                'raw' => $response,
+            ];
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $res = $e->getResponse();
+            $status = $res ? $res->getStatusCode() : null;
+            $bodyText = $res ? $res->getBody()->getContents() : $e->getMessage();
+
+            Log::error('Twitter DM ClientException', [
+                'recipient_id' => $recipientId,
+                'status_code' => $status,
+                'body' => $bodyText,
+            ]);
+
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Twitter DM General Error', [
+                'recipient_id' => $recipientId,
+                'message' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
      * Upload image to Twitter and return media info.
      */
     public function uploadMedia($file)
@@ -1168,7 +1295,7 @@ class TwitterService
     }
 
     /**
-     * Make OAuth 1.0a request manually
+     * Make OAuth 1.0a request manually (x-www-form-urlencoded body)
      */
     private function makeOAuthRequest($method, $url, $params, $settings)
     {
@@ -1193,7 +1320,7 @@ class TwitterService
     }
 
     /**
-     * Make OAuth 1.0a multipart request manually
+     * Make OAuth 1.0a multipart request manually (for media uploads)
      */
     private function makeOAuthMultipartRequest($method, $url, $params, $chunk, $settings)
     {
@@ -1218,6 +1345,33 @@ class TwitterService
             ],
         ]);
         
+        return $response->getBody()->getContents();
+    }
+
+    /**
+     * Make OAuth 1.0a request with JSON body (used for DMs).
+     * JSON body parameters are NOT included in the signature base string, as per Twitter docs.
+     */
+    private function makeOAuthJsonRequest($method, $url, array $body, array $settings)
+    {
+        $oauthParams = $this->buildOAuthParams($settings);
+
+        // Only OAuth params are signed when using JSON body (no query/form params)
+        $signature = $this->buildOAuthSignature($method, $url, $oauthParams, $settings);
+        $oauthParams['oauth_signature'] = $signature;
+
+        $header = $this->buildOAuthHeader($oauthParams);
+
+        $guzzleClient = new GuzzleClient();
+        $response = $guzzleClient->request($method, $url, [
+            'headers' => [
+                'Authorization' => $header,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ],
+            'json' => $body,
+        ]);
+
         return $response->getBody()->getContents();
     }
 

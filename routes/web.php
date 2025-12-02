@@ -56,6 +56,7 @@ Route::middleware(['auth'])->group(function () {
     Route::view('user-management', 'user-management')->name('user-management');
     Route::view('assets', 'assets')->name('assets');
     Route::view('business-auto-posts', 'business-auto-posts')->name('business-auto-posts');
+    Route::view('auto-direct-messages', 'auto-direct-messages')->name('auto-direct-messages');
     
     // Route::resource('reseller', ResellerController::class);
 
