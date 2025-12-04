@@ -858,6 +858,8 @@ class TwitterMentionsComponent extends Component
     public function retweetMention($mentionId)
     {
         try {
+            Log::info('🔴 UI ACTION: Retweet from mentions page', ['mention_id' => $mentionId]);
+            
             $settings = [
                 'account_id' => Auth::user()->twitter_account_id,
                 'access_token' => Auth::user()->twitter_access_token,
@@ -871,8 +873,15 @@ class TwitterMentionsComponent extends Component
             $response = $twitterService->retweet($mentionId);
             
             if ($response) {
-                $retweeted = isset($response->data->retweeted) ? $response->data->retweeted : false;
-                $hasError = isset($response->data->message) && !empty($response->data->message);
+                // Log the response for debugging
+                Log::info('Retweet response received', [
+                    'mention_id' => $mentionId,
+                    'response' => $response,
+                    'has_data' => isset($response->data),
+                    'has_message' => isset($response->data->message),
+                    'has_retweeted' => isset($response->data->retweeted),
+                    'retweeted_value' => isset($response->data->retweeted) ? $response->data->retweeted : 'not_set'
+                ]);
                 
                 // Check if it was already retweeted
                 if (isset($response->data->message) && strpos($response->data->message, 'already retweeted') !== false) {
@@ -886,29 +895,26 @@ class TwitterMentionsComponent extends Component
                     $this->errorMessage = $response->data->message;
                     $this->dispatch('show-error', $response->data->message);
                     // Don't clear cache on rate limit
-                } elseif ($retweeted === true) {
+                } 
+                // If there's no error message, treat it as success (same logic as keyword page)
+                // This handles cases where Twitter API returns success without a "retweeted" field
+                else {
                     // Retweet succeeded - clear cache
                     $this->successMessage = 'Tweet retweeted successfully!';
                     $this->dispatch('show-success', 'Tweet retweeted successfully!');
                     $this->clearMentionsCache();
-                } elseif ($hasError) {
-                    // Retweet failed - show error but don't clear cache
-                    $this->errorMessage = $response->data->message ?? 'Failed to retweet';
-                    $this->dispatch('show-error', $this->errorMessage);
-                    Log::warning('⚠️ Retweet failed - cache NOT cleared', [
-                        'mention_id' => $mentionId,
-                        'error' => $response->data->message ?? 'Unknown error'
-                    ]);
-                } else {
-                    // Unknown response - don't clear cache
-                    $this->errorMessage = 'Unexpected response from Twitter API';
-                    Log::warning('⚠️ Unexpected retweet response - cache NOT cleared', [
-                        'mention_id' => $mentionId,
-                        'response' => $response
-                    ]);
+                    Log::info('✅ Retweet successful from mentions page', ['mention_id' => $mentionId]);
                 }
+            } else {
+                // No response at all
+                $this->errorMessage = 'Failed to retweet: No response from Twitter API';
+                Log::warning('⚠️ Retweet failed - no response', ['mention_id' => $mentionId]);
             }
         } catch (\Exception $e) {
+            Log::error('❌ Failed to retweet mention', [
+                'mention_id' => $mentionId,
+                'error' => $e->getMessage()
+            ]);
             $this->errorMessage = 'Failed to retweet: ' . $e->getMessage();
         }
     }
