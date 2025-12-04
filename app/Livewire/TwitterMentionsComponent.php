@@ -810,41 +810,67 @@ class TwitterMentionsComponent extends Component
             $response = $twitterService->likeTweet($mentionId);
             
             if ($response) {
-                Log::info('✅ Like response received', ['mention_id' => $mentionId, 'response' => $response]);
+                // Log the full response for debugging
+                Log::info('Like response received (mentions)', [
+                    'mention_id' => $mentionId,
+                    'response' => $response,
+                    'has_error' => isset($response->error),
+                    'has_data' => isset($response->data),
+                    'has_message' => isset($response->data->message),
+                    'has_liked' => isset($response->data->liked),
+                    'liked_value' => isset($response->data->liked) ? $response->data->liked : 'not_set',
+                    'message_value' => isset($response->data->message) ? $response->data->message : 'not_set'
+                ]);
                 
-                // Check if the like actually succeeded
-                $liked = isset($response->data->liked) ? $response->data->liked : false;
-                $hasMessage = isset($response->data->message) && !empty($response->data->message);
-                $message = $response->data->message ?? '';
-                
-                if ($liked === true) {
-                    // Only clear cache if like actually succeeded
+                // Check for explicit success indicator first
+                if (isset($response->data->liked) && $response->data->liked === true) {
+                    // Definitely successful - clear cache
+                    Log::info('✅ Like successful (liked=true) - cache cleared', ['mention_id' => $mentionId]);
                     $this->successMessage = 'Tweet liked successfully!';
                     $this->dispatch('show-success', 'Tweet liked successfully!');
                     $this->clearMentionsCache();
-                    Log::info('✅ Like successful - cache cleared', ['mention_id' => $mentionId]);
-                } elseif ($hasMessage && (strpos($message, 'Rate limit exceeded') !== false || strpos($message, 'Too Many Requests') !== false)) {
-                    // Rate limit error
-                    $this->errorMessage = $message;
-                    $this->dispatch('show-error', $message);
-                    Log::warning('⚠️ Like rate limited - cache NOT cleared', ['mention_id' => $mentionId]);
-                } elseif ($hasMessage || $liked === false) {
-                    // Like failed - show error but don't clear cache
-                    $this->errorMessage = $message ?: 'Failed to like tweet';
-                    $this->dispatch('show-error', $this->errorMessage);
-                    Log::warning('⚠️ Like failed - cache NOT cleared', [
-                        'mention_id' => $mentionId,
-                        'liked' => $liked,
-                        'error' => $message ?: 'Unknown error'
-                    ]);
-                } else {
-                    // Unknown response - don't clear cache
-                    $this->errorMessage = 'Unexpected response from Twitter API';
-                    Log::warning('⚠️ Unexpected like response - cache NOT cleared', [
-                        'mention_id' => $mentionId,
-                        'response' => $response
-                    ]);
                 }
+                // Check for explicit error indicator
+                elseif (isset($response->error)) {
+                    // Has error property - definitely an error
+                    $errorMsg = $response->error;
+                    Log::warning('⚠️ Like failed (has error property) - cache NOT cleared', ['mention_id' => $mentionId, 'error' => $errorMsg]);
+                    $this->errorMessage = $errorMsg;
+                    $this->dispatch('show-error', $errorMsg);
+                }
+                // Check if message contains error keywords
+                elseif (isset($response->data->message) && !empty($response->data->message)) {
+                    $message = $response->data->message;
+                    // Only treat as error if message contains error keywords
+                    if (stripos($message, 'error') !== false || 
+                        stripos($message, 'failed') !== false || 
+                        stripos($message, 'rate limit') !== false ||
+                        stripos($message, 'too many requests') !== false ||
+                        stripos($message, 'forbidden') !== false ||
+                        stripos($message, 'unauthorized') !== false ||
+                        stripos($message, 'not found') !== false) {
+                        Log::warning('⚠️ Like failed (error message detected) - cache NOT cleared', ['mention_id' => $mentionId, 'message' => $message]);
+                        $this->errorMessage = $message;
+                        $this->dispatch('show-error', $message);
+                    } else {
+                        // Message doesn't indicate error - treat as success and clear cache
+                        Log::info('✅ Like successful (no error keywords in message) - cache cleared', ['mention_id' => $mentionId, 'message' => $message]);
+                        $this->successMessage = 'Tweet liked successfully!';
+                        $this->dispatch('show-success', 'Tweet liked successfully!');
+                        $this->clearMentionsCache();
+                    }
+                }
+                // No error indicators - treat as success
+                else {
+                    Log::info('✅ Like successful (no error indicators) - cache cleared', ['mention_id' => $mentionId]);
+                    $this->successMessage = 'Tweet liked successfully!';
+                    $this->dispatch('show-success', 'Tweet liked successfully!');
+                    $this->clearMentionsCache();
+                }
+            } else {
+                // No response at all
+                $this->errorMessage = 'Failed to like tweet: No response from Twitter API';
+                Log::warning('⚠️ Like failed - no response', ['mention_id' => $mentionId]);
             }
         } catch (\Exception $e) {
             Log::error('❌ Failed to like mention', [

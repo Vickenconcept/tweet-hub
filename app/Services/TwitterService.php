@@ -1597,22 +1597,27 @@ class TwitterService
             
             // Twitter API v2 expects tweet_id as a string
             $tweetIdString = (string) $tweetId;
-            
-            // Try the package method with tweet_id as parameter to like() method
-            // According to package docs: $client->tweetLikes()->like($tweetId)->performRequest()
-            try {
-                Log::info('Attempting like with tweet_id parameter', ['tweet_id' => $tweetIdString, 'account_id' => $this->settings['account_id']]);
-                return $this->client->tweetLikes()->like($tweetIdString)->performRequest();
-            } catch (\Exception $e) {
-                // If that fails, try the alternative pattern (tweet_id in performRequest)
-                // This matches the retweet pattern
-                if (strpos($e->getMessage(), 'Method') !== false || strpos($e->getMessage(), 'not found') !== false || strpos($e->getMessage(), 'Call to undefined method') !== false) {
-                    Log::info('Trying alternative like method pattern (tweet_id in performRequest)', ['tweet_id' => $tweetIdString]);
-                    return $this->client->tweetLikes()->like()->performRequest(['tweet_id' => $tweetIdString]);
-                }
-                // Re-throw if it's not a method signature error
-                throw $e;
-            }
+
+            /**
+             * IMPORTANT: For Twitter API v2, the like endpoint is:
+             *   POST /2/users/:id/likes
+             * with JSON body: { "tweet_id": "..." }
+             *
+             * The Noweh client already knows the user (from auth/account_id),
+             * so we should NOT pass the tweet ID as a positional argument.
+             * Instead, we must always send it in the request body as "tweet_id".
+             */
+
+            Log::info('Attempting like with tweet_id in request body', [
+                'tweet_id'   => $tweetIdString,
+                'account_id' => $this->settings['account_id'],
+            ]);
+
+            // Correct pattern: send tweet_id in the body
+            return $this->client
+                ->tweetLikes()
+                ->like()
+                ->performRequest(['tweet_id' => $tweetIdString]);
             
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $response = $e->getResponse();

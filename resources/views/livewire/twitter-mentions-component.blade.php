@@ -191,8 +191,7 @@
                                     </svg>
                                     Reply
                                 </button>
-                                <button wire:click="likeMention('{{ $mentionId }}')" 
-                                        class="like-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden group border border-red-200"
+                                <button class="like-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden group border border-red-200"
                                         x-data="{ 
                                             liked: false, 
                                             animating: false,

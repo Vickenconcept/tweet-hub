@@ -1178,17 +1178,64 @@ class KeywordMonitoringComponent extends Component
             $response = $twitterService->likeTweet($tweetId);
             
             if ($response) {
-                // Check if it's an error response
-                if (isset($response->error) || (isset($response->data->message) && strpos($response->data->message, 'Failed') !== false)) {
-                    $errorMsg = $response->error ?? $response->data->message ?? 'Failed to like tweet';
-                    Log::warning('⚠️ Like failed', ['tweet_id' => $tweetId, 'error' => $errorMsg]);
-                    $this->errorMessage = $errorMsg;
-                    $this->dispatch('show-error', $errorMsg);
-                } else {
-                    Log::info('✅ Like successful from keyword page', ['tweet_id' => $tweetId]);
+                // Log the full response for debugging
+                Log::info('Like response received (keyword)', [
+                    'tweet_id' => $tweetId,
+                    'response' => $response,
+                    'has_error' => isset($response->error),
+                    'has_data' => isset($response->data),
+                    'has_message' => isset($response->data->message),
+                    'has_liked' => isset($response->data->liked),
+                    'liked_value' => isset($response->data->liked) ? $response->data->liked : 'not_set',
+                    'message_value' => isset($response->data->message) ? $response->data->message : 'not_set'
+                ]);
+                
+                // Check for explicit success indicator first
+                if (isset($response->data->liked) && $response->data->liked === true) {
+                    // Definitely successful
+                    Log::info('✅ Like successful (liked=true)', ['tweet_id' => $tweetId]);
                     $this->successMessage = 'Tweet liked successfully!';
                     $this->dispatch('show-success', 'Tweet liked successfully!');
                 }
+                // Check for explicit error indicator
+                elseif (isset($response->error)) {
+                    // Has error property - definitely an error
+                    $errorMsg = $response->error;
+                    Log::warning('⚠️ Like failed (has error property)', ['tweet_id' => $tweetId, 'error' => $errorMsg]);
+                    $this->errorMessage = $errorMsg;
+                    $this->dispatch('show-error', $errorMsg);
+                }
+                // Check if message contains error keywords
+                elseif (isset($response->data->message) && !empty($response->data->message)) {
+                    $message = $response->data->message;
+                    // Only treat as error if message contains error keywords
+                    if (stripos($message, 'error') !== false || 
+                        stripos($message, 'failed') !== false || 
+                        stripos($message, 'rate limit') !== false ||
+                        stripos($message, 'too many requests') !== false ||
+                        stripos($message, 'forbidden') !== false ||
+                        stripos($message, 'unauthorized') !== false ||
+                        stripos($message, 'not found') !== false) {
+                        Log::warning('⚠️ Like failed (error message detected)', ['tweet_id' => $tweetId, 'message' => $message]);
+                        $this->errorMessage = $message;
+                        $this->dispatch('show-error', $message);
+                    } else {
+                        // Message doesn't indicate error - treat as success
+                        Log::info('✅ Like successful (no error keywords in message)', ['tweet_id' => $tweetId, 'message' => $message]);
+                        $this->successMessage = 'Tweet liked successfully!';
+                        $this->dispatch('show-success', 'Tweet liked successfully!');
+                    }
+                }
+                // No error indicators - treat as success
+                else {
+                    Log::info('✅ Like successful (no error indicators)', ['tweet_id' => $tweetId]);
+                    $this->successMessage = 'Tweet liked successfully!';
+                    $this->dispatch('show-success', 'Tweet liked successfully!');
+                }
+            } else {
+                // No response at all
+                $this->errorMessage = 'Failed to like tweet: No response from Twitter API';
+                Log::warning('⚠️ Like failed - no response', ['tweet_id' => $tweetId]);
             }
         } catch (\Exception $e) {
             Log::error('❌ Failed to like tweet from keyword page', [
