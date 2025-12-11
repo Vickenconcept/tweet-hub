@@ -634,7 +634,14 @@ class KeywordMonitoringComponent extends Component
                 $brandName = $user->twitter_name ?: $user->name ?: 'your personal brand';
                 $handleUsername = ltrim((string) $user->twitter_username, '@');
                 $handle = $handleUsername ? '@' . $handleUsername : '@brand';
+                
+                // Get TwitterAccount for context URL and prompt
+                $twitterAccount = TwitterAccount::where('user_id', $user->id)->first();
+                $contextString = $this->buildContextString($twitterAccount);
+                
                 $prompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
+                    . "This tweet was found via keyword monitoring - we want to join the conversation about this topic.\n"
+                    . ($contextString ? "Context about the brand:\n{$contextString}\n\n" : "")
                     . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) to this tweet.\n"
                     . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
                     . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"
@@ -1381,6 +1388,35 @@ class KeywordMonitoringComponent extends Component
         }
         
         return $keyword;
+    }
+
+    /**
+     * Build context string from URL and context prompt.
+     *
+     * @param TwitterAccount|null $twitterAccount
+     * @return string
+     */
+    protected function buildContextString(?TwitterAccount $twitterAccount): string
+    {
+        if (!$twitterAccount) {
+            return '';
+        }
+
+        $contextParts = [];
+
+        // Add URL context if provided
+        if (!empty($twitterAccount->auto_comment_url)) {
+            $url = $twitterAccount->auto_comment_url;
+            $contextParts[] = "Brand/Website URL: {$url}";
+            $contextParts[] = "For more context, refer to: {$url}";
+        }
+
+        // Add context prompt if provided
+        if (!empty($twitterAccount->auto_comment_context_prompt)) {
+            $contextParts[] = trim($twitterAccount->auto_comment_context_prompt);
+        }
+
+        return !empty($contextParts) ? implode("\n\n", $contextParts) : '';
     }
 
     public function render()

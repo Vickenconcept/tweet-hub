@@ -380,7 +380,24 @@ class TwitterService
      */
     public function getRecentTweets($accountId)
     {
-        return $this->client->timeline()->getRecentTweets($accountId)->performRequest();
+        try {
+            // Try to include public metrics if the method exists
+            $timeline = $this->client->timeline()->getRecentTweets($accountId);
+            
+            // Add metrics if method exists
+            if (method_exists($timeline, 'showMetrics')) {
+                $timeline->showMetrics();
+            }
+            
+            return $timeline->performRequest();
+        } catch (\Exception $e) {
+            // Fallback to basic request if showMetrics fails
+            Log::warning('Could not add metrics to getRecentTweets, using basic request', [
+                'account_id' => $accountId,
+                'error' => $e->getMessage()
+            ]);
+            return $this->client->timeline()->getRecentTweets($accountId)->performRequest();
+        }
     }
 
     /**
@@ -815,6 +832,70 @@ class TwitterService
     }
 
     /**
+     * Send a public reply as an alternative to DMs (works on Basic tier).
+     * This mentions the user publicly on the original tweet.
+     * 
+     * @param string $tweetId The original tweet ID to reply to
+     * @param string $recipientUsername The username of the recipient (without @)
+     * @param string $text The message text (without @mention - will be added automatically)
+     * @return object Response object with sent status
+     */
+    public function sendPublicReply(string $tweetId, string $recipientUsername, string $text)
+    {
+        // Ensure username doesn't start with @
+        $recipientUsername = ltrim($recipientUsername, '@');
+        
+        // Build reply text with mention
+        $replyText = "@{$recipientUsername} {$text}";
+        
+        // Twitter limit: 280 chars, but @username counts toward limit
+        $charCount = mb_strlen($replyText, 'UTF-8');
+        if ($charCount > 280) {
+            // Truncate the message text (keeping @mention)
+            $maxTextLength = 280 - mb_strlen("@{$recipientUsername} ", 'UTF-8') - 1; // -1 for safety
+            $text = mb_substr($text, 0, $maxTextLength);
+            $replyText = "@{$recipientUsername} {$text}";
+        }
+        
+        Log::info('📤 TwitterService: Attempting to send public reply (Basic tier workaround)', [
+            'tweet_id' => $tweetId,
+            'recipient_username' => $recipientUsername,
+            'reply_text' => $replyText,
+            'char_count' => mb_strlen($replyText, 'UTF-8'),
+        ]);
+        
+        try {
+            // Use createTweet with reply parameter (works on Basic tier)
+            $result = $this->createTweet($replyText, [], $tweetId);
+            
+            Log::info('✅ TwitterService: Public reply sent successfully', [
+                'tweet_id' => $tweetId,
+                'reply_tweet_id' => $result->data->id ?? null,
+                'recipient_username' => $recipientUsername,
+            ]);
+            
+            return (object) [
+                'data' => [
+                    'sent' => true,
+                    'message' => 'Public reply sent successfully',
+                    'reply_tweet_id' => $result->data->id ?? null,
+                    'method' => 'public_reply',
+                ],
+                'raw' => $result,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('❌ TwitterService: Failed to send public reply', [
+                'tweet_id' => $tweetId,
+                'recipient_username' => $recipientUsername,
+                'error' => $e->getMessage(),
+                'error_class' => get_class($e),
+            ]);
+            
+            throw $e;
+        }
+    }
+
+    /**
      * Send a Direct Message (DM) to a user by recipient ID using Twitter API v1.1.
      *
      * Endpoint: POST https://api.twitter.com/1.1/direct_messages/events/new.json
@@ -822,6 +903,7 @@ class TwitterService
      * This requires:
      * - App-level DM permissions in the Twitter Developer Portal
      * - Valid user access_token/access_token_secret with DM scope
+     * - PRO PLAN ($5,000/month) - Basic tier does NOT have access to this endpoint
      */
     public function sendDirectMessage(string $recipientId, string $text)
     {

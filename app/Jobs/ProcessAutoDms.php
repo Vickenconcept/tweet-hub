@@ -77,6 +77,8 @@ class ProcessAutoDms implements ShouldQueue
             $recipientId = (string) ($recipient['twitter_recipient_id'] ?? '');
             $context = $recipient['context'] ?? null;
             $dmText = $recipient['dm_text'] ?? null;
+            $tweetId = $recipient['tweet_id'] ?? null;
+            $interactionType = $recipient['interaction_type'] ?? null;
 
             if ($recipientId === '' || $dmText === null || trim($dmText) === '') {
                 Log::warning('📩 ProcessAutoDms: skipping invalid recipient', [
@@ -115,57 +117,116 @@ class ProcessAutoDms implements ShouldQueue
                 'twitter_recipient_id' => $recipientId,
                 'source_type' => $this->sourceType,
                 'campaign_name' => $this->campaignName,
+                'tweet_id' => $tweetId,
+                'interaction_type' => $interactionType,
             ]);
 
             $record->original_context = $context;
+            
+            // Enforce 179 character limit for public replies (Twitter API restriction)
+            // Truncate if longer to prevent 403 Forbidden errors
+            $originalLength = mb_strlen($dmText);
+            if ($originalLength > 179) {
+                $dmText = mb_substr($dmText, 0, 179);
+                Log::warning('📩 ProcessAutoDms: DM text truncated to 179 characters', [
+                    'user_id' => $user->id,
+                    'recipient_id' => $recipientId,
+                    'original_length' => $originalLength,
+                    'truncated_length' => mb_strlen($dmText),
+                ]);
+            }
+            
             $record->dm_text = $dmText;
 
             try {
-                Log::info('📩 ProcessAutoDms: preparing to send DM', [
+                // Get recipient username (required for public replies)
+                $recipientUsername = null;
+                try {
+                    $userInfo = $twitter->findUser($recipientId, \Noweh\TwitterApi\UserLookup::MODES['ID']);
+                    if ($userInfo && isset($userInfo->data)) {
+                        $userData = is_array($userInfo->data) ? $userInfo->data : (array) $userInfo->data;
+                        if (is_object($userData)) {
+                            $recipientUsername = $userData->username ?? null;
+                            $record->recipient_username = $recipientUsername;
+                            $record->recipient_name = $userData->name ?? null;
+                        } else {
+                            $recipientUsername = $userData['username'] ?? null;
+                            $record->recipient_username = $recipientUsername;
+                            $record->recipient_name = $userData['name'] ?? null;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Could not fetch recipient username for public reply', [
+                        'recipient_id' => $recipientId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+                
+                if (!$recipientUsername) {
+                    throw new \Exception("Could not fetch username for recipient ID: {$recipientId}");
+                }
+                
+                if (!$tweetId) {
+                    throw new \Exception("Tweet ID is required for public replies");
+                }
+                
+                Log::info('💬 ProcessAutoDms: preparing to send public reply (Basic tier workaround)', [
                     'user_id' => $user->id,
                     'user_email' => $user->email,
                     'recipient_id' => $recipientId,
+                    'recipient_username' => $recipientUsername,
+                    'tweet_id' => $tweetId,
                     'is_test_dm' => $isTestDm,
-                    'is_sending_to_self' => $isTestDm,
                     'source_type' => $this->sourceType,
                     'campaign_name' => $this->campaignName,
-                    'dm_text_preview' => \Illuminate\Support\Str::limit($dmText, 100),
-                    'dm_text_length' => mb_strlen($dmText),
+                    'reply_text_preview' => \Illuminate\Support\Str::limit($dmText, 100),
+                    'method' => 'public_reply',
+                    'note' => 'Using public replies instead of DMs (works on Basic tier)',
                 ]);
 
-                $response = $twitter->sendDirectMessage($recipientId, $dmText);
+                // Use public reply instead of DM (works on Basic tier)
+                $response = $twitter->sendPublicReply($tweetId, $recipientUsername, $dmText);
 
-                // Check if DM was sent successfully
+                // Check if reply was sent successfully
                 if (isset($response->data['sent']) && $response->data['sent'] === true) {
                     $record->status = 'sent';
                     $record->sent_at = now();
                     $record->last_error = null;
+                    
+                    // Save Twitter API response data for tracking
+                    if (isset($response->data['reply_tweet_id'])) {
+                        $record->twitter_message_id = $response->data['reply_tweet_id'];
+                    }
+                    if (isset($response->raw->data->id)) {
+                        $record->twitter_event_id = $response->raw->data->id;
+                    }
+                    
                     $sentCount++;
                     
-                    Log::info('✅ ProcessAutoDms: DM sent successfully', [
+                    Log::info('✅ ProcessAutoDms: Public reply sent successfully', [
                         'user_id' => $user->id,
                         'user_email' => $user->email,
                         'recipient_id' => $recipientId,
-                        'is_test_dm' => $isTestDm,
-                        'is_sending_to_self' => $isTestDm,
+                        'recipient_username' => $recipientUsername,
+                        'tweet_id' => $tweetId,
+                        'reply_tweet_id' => $response->data['reply_tweet_id'] ?? null,
                         'source_type' => $this->sourceType,
                         'campaign_name' => $this->campaignName,
                         'sent_at' => $record->sent_at->toDateTimeString(),
-                        'dm_text_preview' => \Illuminate\Support\Str::limit($dmText, 80),
+                        'reply_text_preview' => \Illuminate\Support\Str::limit($dmText, 80),
+                        'method' => 'public_reply',
                     ]);
                 } else {
                     $record->status = 'failed';
-                    $errorMsg = $response->data['message'] ?? 'DM sending failed - unknown error';
+                    $errorMsg = $response->data['message'] ?? 'Public reply sending failed - unknown error';
                     $record->last_error = $errorMsg;
                     
-                    Log::error('❌ ProcessAutoDms: DM sending failed', [
+                    Log::error('❌ ProcessAutoDms: Public reply sending failed', [
                         'user_id' => $user->id,
                         'user_email' => $user->email,
                         'recipient_id' => $recipientId,
-                        'is_test_dm' => $isTestDm,
-                        'is_sending_to_self' => $isTestDm,
-                        'source_type' => $this->sourceType,
-                        'campaign_name' => $this->campaignName,
+                        'recipient_username' => $recipientUsername,
+                        'tweet_id' => $tweetId,
                         'error' => $errorMsg,
                         'response_data' => $response->data ?? null,
                         'raw_response' => $response->raw ?? null,
@@ -179,40 +240,21 @@ class ProcessAutoDms implements ShouldQueue
                 $record->last_error = $errorMessage;
                 $record->save();
 
-                // Check if this is a 403 error indicating API plan issue
-                $is403Error = str_contains($errorMessage, '403') || str_contains($errorMessage, 'Forbidden');
-                $isAccessLevelError = str_contains($errorMessage, 'access level') || str_contains($errorMessage, 'subset of X API');
-                
-                if ($is403Error && $isAccessLevelError) {
-                    Log::error('❌ ProcessAutoDms: DM failed - API plan access issue (likely free plan)', [
-                        'user_id' => $user->id,
-                        'user_email' => $user->email,
-                        'recipient_id' => $recipientId,
-                        'is_test_dm' => $isTestDm,
-                        'is_sending_to_self' => $isTestDm,
-                        'source_type' => $this->sourceType,
-                        'campaign_name' => $this->campaignName,
-                        'error_message' => $errorMessage,
-                        'error_class' => get_class($e),
-                        'issue' => 'DM endpoints require Basic plan ($100/month) or higher. Free plan does not have access to v1.1 DM endpoints.',
-                        'solution' => 'Upgrade to Basic plan in Twitter Developer Portal, then disconnect and reconnect Twitter account.',
-                    ]);
-                } else {
-                    Log::error('❌ ProcessAutoDms: exception while sending DM', [
-                        'user_id' => $user->id,
-                        'user_email' => $user->email,
-                        'recipient_id' => $recipientId,
-                        'is_test_dm' => $isTestDm,
-                        'is_sending_to_self' => $isTestDm,
-                        'source_type' => $this->sourceType,
-                        'campaign_name' => $this->campaignName,
-                        'error_message' => $errorMessage,
-                        'error_class' => get_class($e),
-                        'error_file' => $e->getFile(),
-                        'error_line' => $e->getLine(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-                }
+                // Log error (public replies should work on Basic tier)
+                Log::error('❌ ProcessAutoDms: exception while sending public reply', [
+                    'user_id' => $user->id,
+                    'user_email' => $user->email,
+                    'recipient_id' => $recipientId,
+                    'tweet_id' => $tweetId ?? null,
+                    'is_test_dm' => $isTestDm,
+                    'source_type' => $this->sourceType,
+                    'campaign_name' => $this->campaignName,
+                    'error_message' => $errorMessage,
+                    'error_class' => get_class($e),
+                    'error_file' => $e->getFile(),
+                    'error_line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
             }
         }
 

@@ -13,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -53,6 +54,40 @@ class ProcessMentionAutoReplies implements ShouldQueue
         $this->userId = $userId;
         $this->mentions = $mentions;
         $this->sourceType = in_array($sourceType, ['mention', 'keyword'], true) ? $sourceType : 'mention';
+    }
+
+    /**
+     * Build context string from URL and context prompt.
+     *
+     * @param TwitterAccount $twitterAccount
+     * @return string
+     */
+    protected function buildContextString(TwitterAccount $twitterAccount): string
+    {
+        $contextParts = [];
+
+        // Add URL context if provided
+        if (!empty($twitterAccount->auto_comment_url)) {
+            $url = $twitterAccount->auto_comment_url;
+            $contextParts[] = "Brand/Website URL: {$url}";
+            
+            // Optionally fetch and include URL content (simplified - just reference the URL)
+            // For more advanced implementation, you could fetch and summarize the page content
+            try {
+                // Just reference the URL - AI can use it as context
+                // In a more advanced version, you could fetch and summarize the page
+                $contextParts[] = "For more context, refer to: {$url}";
+            } catch (\Exception $e) {
+                // Silently fail - URL reference is still included
+            }
+        }
+
+        // Add context prompt if provided
+        if (!empty($twitterAccount->auto_comment_context_prompt)) {
+            $contextParts[] = trim($twitterAccount->auto_comment_context_prompt);
+        }
+
+        return !empty($contextParts) ? implode("\n\n", $contextParts) : '';
     }
 
     /**
@@ -311,11 +346,15 @@ class ProcessMentionAutoReplies implements ShouldQueue
                 $handleUsername = ltrim((string) $user->twitter_username, '@');
                 $handle = $handleUsername ? '@' . $handleUsername : '@brand';
 
+                // Build context string from URL and context prompt
+                $contextString = $this->buildContextString($twitterAccount);
+
                 // Different logic for keywords vs mentions
                 if ($this->sourceType === 'keyword') {
                     // For keywords: Be more lenient - if it matches the keyword, engage unless it's spam/offensive
                     $shouldReplyPrompt = "You are an assistant for {$brandName} ({$handle}) on Twitter (X).\n"
                         . "This tweet was found because it contains a keyword we're monitoring.\n"
+                        . ($contextString ? "Context about the brand:\n{$contextString}\n\n" : "")
                         . "Decide if we should reply. Reply ONLY with 'yes' or 'no'.\n"
                         . "Reply 'yes' if the tweet is about the topic and we can add value with a helpful, positive comment.\n"
                         . "Reply 'no' ONLY if it's clearly spam, offensive, or completely unrelated to the keyword topic.\n"
@@ -324,6 +363,7 @@ class ProcessMentionAutoReplies implements ShouldQueue
                 } else {
                     // For mentions: Be more selective - is this person actually talking to us?
                     $shouldReplyPrompt = "You are an assistant for {$brandName} ({$handle}) on Twitter (X).\n"
+                        . ($contextString ? "Context about the brand:\n{$contextString}\n\n" : "")
                         . "Decide if we should reply to this tweet. Reply ONLY with 'yes' or 'no'.\n"
                         . "Reply 'yes' only if:\n"
                         . "- The tweet is relevant to the brand or its audience, AND\n"
@@ -354,9 +394,13 @@ class ProcessMentionAutoReplies implements ShouldQueue
                 ]);
 
                 // Step 2: generate the actual reply
+                // Build context string again for reply generation
+                $contextString = $this->buildContextString($twitterAccount);
+                
                 if ($this->sourceType === 'keyword') {
                     $replyPrompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
                         . "This tweet was found via keyword monitoring - we want to join the conversation about this topic.\n"
+                        . ($contextString ? "Context about the brand:\n{$contextString}\n\n" : "")
                         . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) that adds value to the discussion.\n"
                         . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
                         . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"
@@ -364,6 +408,7 @@ class ProcessMentionAutoReplies implements ShouldQueue
                         . "Tweet content:\n\"{$mentionText}\"";
                 } else {
                     $replyPrompt = "You are helping {$brandName} reply on Twitter (X) as {$handle}.\n"
+                        . ($contextString ? "Context about the brand:\n{$contextString}\n\n" : "")
                         . "Write ONE short, human, warm, and genuinely helpful reply (max 220 characters) to this tweet.\n"
                         . "Tone: positive, respectful, and professional. No slang, no sarcasm, no negativity.\n"
                         . "Do NOT include hashtags, links, or emojis unless absolutely necessary. Avoid sounding like AI.\n"

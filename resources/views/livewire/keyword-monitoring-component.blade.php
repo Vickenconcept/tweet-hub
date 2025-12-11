@@ -163,7 +163,7 @@
     @endif
 
     <!-- Advanced Search Toggle -->
-    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
+    {{-- <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8">
         <div class="flex items-center justify-between">
             <div class="flex items-center">
                 <div class="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mr-4">
@@ -180,7 +180,7 @@
                 <span class="ml-3 text-sm font-medium text-gray-700">Enable Advanced Search</span>
             </label>
         </div>
-    </div>
+    </div> --}}
 
     <!-- Advanced Search Configuration Panel -->
     @if($advancedSearch)

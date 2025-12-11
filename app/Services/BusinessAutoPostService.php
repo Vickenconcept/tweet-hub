@@ -166,7 +166,7 @@ Angle for today's post: {$angle}
 {$recentSummary}
 
 Constraints:
-- Max 270 characters
+- Not more than 160 characters
 - Use natural human language with a clear hook and CTA
 - Include 1–2 smart hashtags only if they feel natural
 - Emojis are optional and should reinforce, not replace words
@@ -206,8 +206,14 @@ PROMPT;
         $sanitized = preg_replace('/\s+/', ' ', $sanitized);
         $sanitized = trim($sanitized);
 
-        if (mb_strlen($sanitized) > 280) {
-            $sanitized = mb_substr($sanitized, 0, 277) . '...';
+       
+        $originalLength = mb_strlen($sanitized);
+        if ($originalLength > 160) {
+            $sanitized = mb_substr($sanitized, 0, 160);
+            Log::warning('BusinessAutoPostService: Content truncated to 160 characters', [
+                'original_length' => $originalLength,
+                'truncated_length' => mb_strlen($sanitized),
+            ]);
         }
 
         return $sanitized;

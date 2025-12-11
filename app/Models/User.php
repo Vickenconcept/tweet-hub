@@ -36,6 +36,9 @@ class User extends Authenticatable
         'monitored_keywords',
         'auto_reply_mentions_enabled',
         'auto_reply_keywords_enabled',
+        'interaction_auto_dm_enabled',
+        'interaction_auto_dm_template',
+        'interaction_auto_dm_daily_limit',
         'timezone',
     ];
 

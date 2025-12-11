@@ -18,6 +18,8 @@ class TwitterAccount extends Model
         'access_token',
         'access_token_secret',
         'auto_comment_enabled',
+        'auto_comment_url',
+        'auto_comment_context_prompt',
         'daily_comment_limit',
         'comments_posted_today',
         'last_comment_at',

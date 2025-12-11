@@ -16,3 +16,6 @@ Schedule::command('business:auto-generate')->dailyAt('05:00');
 
 // Reset Twitter account daily comment counters at midnight
 Schedule::command('twitter:reset-daily-counters')->dailyAt('00:00');
+
+// Process interaction auto DMs every 15 minutes
+Schedule::command('interactions:process-auto-dms')->everyFifteenMinutes();

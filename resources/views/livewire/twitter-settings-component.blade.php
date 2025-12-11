@@ -78,6 +78,30 @@
                     @endif
 
                     <div>
+                        <label for="autoCommentUrl" class="block text-sm font-medium text-gray-700 mb-2">
+                            Context URL (Optional)
+                        </label>
+                        <input type="url" 
+                               id="autoCommentUrl" 
+                               wire:model="autoCommentUrl"
+                               placeholder="https://example.com/about"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <p class="text-sm text-gray-500 mt-1">URL to provide context about your brand/business for AI-generated comments</p>
+                    </div>
+
+                    <div>
+                        <label for="autoCommentContextPrompt" class="block text-sm font-medium text-gray-700 mb-2">
+                            Context Prompt (Optional)
+                        </label>
+                        <textarea id="autoCommentContextPrompt" 
+                                  wire:model="autoCommentContextPrompt"
+                                  rows="4"
+                                  placeholder="e.g., We are a tech startup focused on AI solutions. Our tone is friendly and professional..."
+                                  class="w-full border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                        <p class="text-sm text-gray-500 mt-1">Additional context to guide AI when generating comments. This will be combined with the URL context.</p>
+                    </div>
+
+                    <div>
                         <label for="dailyCommentLimit" class="block text-sm font-medium text-gray-700 mb-2">
                             Daily Comment Limit
                         </label>

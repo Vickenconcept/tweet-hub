@@ -25,15 +25,24 @@ class GenerateBusinessAutoPosts extends Command
         }
 
         $count = 0;
+        $delaySeconds = 0;
 
-        $query->chunkById(50, function ($profiles) use (&$count, $targetDate) {
+       
+        $query->chunkById(50, function ($profiles) use (&$count, &$delaySeconds, $targetDate) {
             foreach ($profiles as $profile) {
-                GenerateBusinessAutoPost::dispatch($profile->id, $targetDate->toDateString());
+                
+                GenerateBusinessAutoPost::dispatch($profile->id, $targetDate->toDateString())
+                    ->delay(now()->addSeconds($delaySeconds));
+                
                 $count++;
+                $delaySeconds += 8; 
             }
         });
 
+        $estimatedMinutes = ceil(($count * 6) / 60);
         $this->info("Queued {$count} auto-post jobs for {$targetDate->toDateString()}");
+        $this->info("Jobs are staggered with 6-second delays to prevent OpenAI rate limiting");
+        $this->info("Estimated completion time: ~{$estimatedMinutes} minutes");
     }
 }
 

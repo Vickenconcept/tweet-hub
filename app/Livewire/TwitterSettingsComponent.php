@@ -11,6 +11,8 @@ use Livewire\Component;
 class TwitterSettingsComponent extends Component
 {
     public $autoCommentEnabled = false;
+    public $autoCommentUrl = '';
+    public $autoCommentContextPrompt = '';
     public $dailyCommentLimit = 20;
     public $commentsPostedToday = 0;
     public $lastCommentAt = null;
@@ -42,6 +44,8 @@ class TwitterSettingsComponent extends Component
         // Load existing auto-comment settings
         if ($this->twitterAccount) {
             $this->autoCommentEnabled = $this->twitterAccount->auto_comment_enabled;
+            $this->autoCommentUrl = $this->twitterAccount->auto_comment_url ?? '';
+            $this->autoCommentContextPrompt = $this->twitterAccount->auto_comment_context_prompt ?? '';
             $this->dailyCommentLimit = $this->twitterAccount->daily_comment_limit;
             $this->commentsPostedToday = $this->twitterAccount->comments_posted_today;
             $this->lastCommentAt = $this->twitterAccount->last_comment_at?->format('Y-m-d H:i:s');
@@ -83,6 +87,8 @@ class TwitterSettingsComponent extends Component
 
             // Only update auto-comment settings (credentials are managed via OAuth)
             $twitterAccount->auto_comment_enabled = $this->autoCommentEnabled;
+            $twitterAccount->auto_comment_url = $this->autoCommentUrl ?: null;
+            $twitterAccount->auto_comment_context_prompt = $this->autoCommentContextPrompt ?: null;
             $twitterAccount->daily_comment_limit = $this->dailyCommentLimit;
 
             // If auto-comment is disabled, reset the counter
