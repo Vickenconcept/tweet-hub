@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
 class WhatsAppQueueStatus extends Command
@@ -16,34 +17,37 @@ class WhatsAppQueueStatus extends Command
     {
         $connection = config('queue.default');
 
-        $this->info('Queue connection: '.$connection);
+        $this->info('Queue connection (QUEUE_CONNECTION): '.$connection);
         $this->line('Database: '.config('database.connections.'.config('database.default').'.database'));
 
         if ($connection === 'sync') {
             $this->warn('QUEUE_CONNECTION=sync — jobs run during the web request. queue:work will not process anything.');
-            $this->line('Set QUEUE_CONNECTION=database in Forge Environment, then: php artisan config:clear');
+            $this->line('Set QUEUE_CONNECTION=redis or database in Forge Environment, then: php artisan config:clear');
         }
 
-        if (! Schema::hasTable('jobs')) {
-            $this->error('The jobs table is missing. Run: php artisan migrate');
-
-            return self::FAILURE;
+        if ($connection === 'redis') {
+            try {
+                $redisPending = Queue::connection('redis')->size('default');
+                $this->line('Pending jobs on redis [default]: '.$redisPending);
+            } catch (\Throwable $e) {
+                $this->error('Could not read redis queue: '.$e->getMessage());
+            }
         }
 
-        $pending = (int) DB::table('jobs')->count();
-        $reserved = (int) DB::table('jobs')->whereNotNull('reserved_at')->count();
-        $whatsappPending = (int) DB::table('jobs')
-            ->where('payload', 'like', '%ProcessWhatsAppCommand%')
-            ->count();
+        if (Schema::hasTable('jobs')) {
+            $pending = (int) DB::table('jobs')->count();
+            $whatsappPending = (int) DB::table('jobs')
+                ->where('payload', 'like', '%ProcessWhatsAppCommand%')
+                ->count();
 
-        $this->table(
-            ['Metric', 'Count'],
-            [
-                ['Pending jobs (all)', $pending],
-                ['Reserved / in-flight', $reserved],
-                ['Pending WhatsApp jobs', $whatsappPending],
-            ]
-        );
+            if ($pending > 0) {
+                $this->warn("Pending jobs in database queue table: {$pending} ({$whatsappPending} WhatsApp)");
+                if ($connection === 'redis') {
+                    $this->line('These were likely queued before redis switch, or while jobs used onConnection(database).');
+                    $this->line('Clear with: php artisan queue:work database --stop-when-empty');
+                }
+            }
+        }
 
         if (Schema::hasTable('failed_jobs')) {
             $failed = (int) DB::table('failed_jobs')
@@ -64,11 +68,9 @@ class WhatsAppQueueStatus extends Command
             }
         }
 
-        if ($pending > 0 && $connection !== 'sync') {
-            $this->newLine();
-            $this->info('Process pending jobs with:');
-            $this->line('  cd ~/tweet-hub-nozmzves.on-forge.com/current && php artisan queue:work database --verbose --once');
-        }
+        $this->newLine();
+        $this->info('Run worker for your active connection:');
+        $this->line("  php artisan queue:work {$connection} --verbose --once");
 
         return self::SUCCESS;
     }

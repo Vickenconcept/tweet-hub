@@ -30,9 +30,7 @@ class ProcessWhatsAppCommand implements ShouldQueue
         protected string $fromPhone,
         protected string $messageText,
         protected ?int $userId = null,
-    ) {
-        $this->onConnection('database');
-    }
+    ) {}
 
     public function handle(
         WhatsAppIntentResolver $intentResolver,
