@@ -348,8 +348,13 @@ class ZernioService
         return $response->json();
     }
 
-    public function sendInboxMessage(string $conversationId, string $message, ?string $accountId = null): bool
-    {
+    public function sendInboxMessage(
+        string $conversationId,
+        string $message,
+        ?string $accountId = null,
+        ?string $attachmentUrl = null,
+        ?string $attachmentType = null,
+    ): bool {
         $accountId = $accountId ?: $this->accountId;
 
         if (! $this->hasApiKey() || ! $accountId) {
@@ -358,11 +363,15 @@ class ZernioService
             return false;
         }
 
+        $body = array_filter([
+            'accountId' => $accountId,
+            'message' => $message,
+            'attachmentUrl' => $attachmentUrl,
+            'attachmentType' => $attachmentType,
+        ], fn ($value) => $value !== null && $value !== '');
+
         try {
-            $response = $this->request('post', "/inbox/conversations/{$conversationId}/messages", [
-                'accountId' => $accountId,
-                'message' => $message,
-            ]);
+            $response = $this->request('post', "/inbox/conversations/{$conversationId}/messages", $body);
         } catch (ConnectionException $e) {
             Log::error('Zernio sendInboxMessage connection failed after retries', [
                 'conversation_id' => $conversationId,
@@ -385,9 +394,47 @@ class ZernioService
         Log::info('Zernio sendInboxMessage delivered', [
             'conversation_id' => $conversationId,
             'message_preview' => mb_substr($message, 0, 80),
+            'has_attachment' => $attachmentUrl !== null && $attachmentUrl !== '',
         ]);
 
         return true;
+    }
+
+    public function deliverOutboundMessage(string $conversationId, \App\Services\WhatsApp\WhatsAppOutboundMessage $outbound, ?string $accountId = null): bool
+    {
+        $text = trim($outbound->text);
+        $images = array_values(array_filter(
+            $outbound->images,
+            fn (array $image) => trim((string) ($image['url'] ?? '')) !== '',
+        ));
+
+        if (count($images) === 1 && $text !== '') {
+            return $this->sendInboxMessage(
+                $conversationId,
+                $text,
+                $accountId,
+                $images[0]['url'],
+                'image',
+            );
+        }
+
+        $ok = true;
+
+        if ($text !== '') {
+            $ok = $this->sendInboxMessage($conversationId, $text, $accountId) && $ok;
+        }
+
+        foreach ($images as $image) {
+            $ok = $this->sendInboxMessage(
+                $conversationId,
+                trim((string) ($image['caption'] ?? '')),
+                $accountId,
+                $image['url'],
+                'image',
+            ) && $ok;
+        }
+
+        return $ok;
     }
 
     /**

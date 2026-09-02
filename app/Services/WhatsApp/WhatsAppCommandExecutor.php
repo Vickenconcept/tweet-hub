@@ -22,7 +22,7 @@ class WhatsAppCommandExecutor
         protected WhatsAppAssetAttachments $assetAttachments,
     ) {}
 
-    public function execute(User $user, array $parsed, WhatsAppCommandLog $log): string
+    public function execute(User $user, array $parsed, WhatsAppCommandLog $log): string|WhatsAppOutboundMessage
     {
         $action = $parsed['action'] ?? 'unknown';
 
@@ -64,7 +64,9 @@ class WhatsAppCommandExecutor
                 'auto_posts' => $this->autoPosts($user),
                 'auto_posts_toggle' => $this->toggleAutoPosts($user, $parsed['index'] ?? 0, $parsed['enabled'] ?? false),
                 'image' => $this->generateImage($user, $parsed['prompt'] ?? ''),
-                'assets' => $this->assets($user),
+                'assets' => $this->assets($user, max(1, (int) ($parsed['page'] ?? 1))),
+                'assets_more' => $this->assetsMore($user),
+                'assets_prev' => $this->assetsPrev($user),
                 'view_asset' => $this->viewAsset($user, (int) ($parsed['index'] ?? 0)),
                 'notify_posts_on' => $this->toggleNotifyPosts($user, true),
                 'notify_posts_off' => $this->toggleNotifyPosts($user, false),
@@ -116,7 +118,7 @@ class WhatsAppCommandExecutor
         string $caption,
         WhatsAppIntentResolver $intentResolver,
         WhatsAppCommandLog $log,
-    ): string {
+    ): string|WhatsAppOutboundMessage {
         $this->requirePermission($user, 'assets');
 
         try {
@@ -150,27 +152,26 @@ class WhatsAppCommandExecutor
                     'parsed_action' => $parsed['action'] ?? 'unknown',
                 ]);
 
-                $prefix = implode("\n", [
+                $savedImage = WhatsAppOutboundMessage::withImages(
                     '📸 *Image saved*',
-                    '',
-                    'Tap to preview:',
-                    $imported[0]['url'],
-                    '',
-                ]);
+                    [[
+                        'url' => $imported[0]['url'],
+                        'caption' => "Saved as image *{$imageNumber}*",
+                    ]],
+                );
 
-                return $prefix.$this->execute($user, $parsed, $log);
+                return $savedImage->append($this->execute($user, $parsed, $log));
             }
 
             $log->update(['parsed_action' => 'inbound_image']);
 
-            return implode("\n", [
-                '📸 *Image saved!*',
-                '',
-                "Saved as image *{$imageNumber}* in your library.",
-                '',
-                'Tap to preview:',
-                $imported[0]['url'],
-            ]).WhatsAppActionHints::inboundImageActions($imageNumber);
+            return WhatsAppOutboundMessage::withImages(
+                '📸 *Image saved!*'."\n\nSaved as image *{$imageNumber}* in your library.".WhatsAppActionHints::inboundImageActions($imageNumber),
+                [[
+                    'url' => $imported[0]['url'],
+                    'caption' => $this->friendlyAssetLabel($imported[0]['name'] ?? 'Image'),
+                ]],
+            );
         } catch (\Throwable $e) {
             Log::error('WhatsApp inbound image failed', [
                 'user_id' => $user->id,
@@ -1023,7 +1024,7 @@ class WhatsAppCommandExecutor
         return '✅ *'.$profile->name.'* auto posts: *'.($enabled ? 'ON' : 'OFF').'*';
     }
 
-    protected function generateImage(User $user, string $prompt): string
+    protected function generateImage(User $user, string $prompt): WhatsAppOutboundMessage
     {
         $this->requirePermission($user, 'image');
 
@@ -1031,38 +1032,89 @@ class WhatsAppCommandExecutor
         $this->media->syncAssetsToSession($user);
         WhatsAppSessionContext::for($user)->storeLastImage($result);
 
-        return implode("\n", [
-            '🎨 *Image ready!*',
-            '',
-            'Tap to preview:',
-            $result['url'],
-        ]).WhatsAppActionHints::imageActions();
+        return WhatsAppOutboundMessage::withImages(
+            '🎨 *Image ready!*'.WhatsAppActionHints::imageActions(),
+            [[
+                'url' => $result['url'],
+                'caption' => 'Generated image',
+            ]],
+        );
     }
 
-    protected function assets(User $user): string
+    protected function assets(User $user, int $page = 1): string|WhatsAppOutboundMessage
     {
         $this->requirePermission($user, 'assets');
 
-        $assets = $this->media->syncAssetsToSession($user);
+        $allAssets = $this->media->syncAssetsToSession($user);
+        $total = count($allAssets);
 
-        if (empty($assets)) {
-            return '🖼 No images yet.'.WhatsAppActionHints::assetActions();
+        if ($total === 0) {
+            return implode("\n", [
+                '🖼 *No saved images yet.*',
+                '',
+                'Send a photo here in WhatsApp, upload one in the app, or generate one:',
+                '*image: your description*',
+            ]).WhatsAppActionHints::assetActions();
         }
 
-        $lines = ['🖼 *Your images*', 'Tap a link to preview in chat.', ''];
+        $pageSize = WhatsAppMediaService::ASSETS_PAGE_SIZE;
+        $totalPages = (int) max(1, ceil($total / $pageSize));
+        $page = max(1, min($page, $totalPages));
 
-        foreach ($assets as $index => $asset) {
-            $num = $index + 1;
+        WhatsAppSessionContext::for($user)->storeAssetsPage($page);
+
+        $offset = ($page - 1) * $pageSize;
+        $pageAssets = array_slice($allAssets, $offset, $pageSize);
+
+        $images = [];
+        foreach ($pageAssets as $i => $asset) {
+            $num = $offset + $i + 1;
             $label = $this->friendlyAssetLabel($asset['name'] ?? 'Image');
-            $lines[] = "{$num}️⃣ {$label}";
-            $lines[] = $asset['url'];
-            $lines[] = '';
+            $images[] = [
+                'url' => $asset['url'],
+                'caption' => "{$num}️⃣ {$label}",
+            ];
         }
 
-        return implode("\n", $lines).WhatsAppActionHints::assetActions();
+        $header = '🖼 *Your images* — page '.$page.'/'.$totalPages.' ('.$total.' total)';
+
+        return WhatsAppOutboundMessage::withImages(
+            $header.WhatsAppActionHints::assetPageActions($page, $totalPages),
+            $images,
+        );
     }
 
-    protected function viewAsset(User $user, int $index): string
+    protected function assetsMore(User $user): string|WhatsAppOutboundMessage
+    {
+        $context = WhatsAppSessionContext::for($user);
+        $allAssets = $this->media->syncAssetsToSession($user);
+        $total = count($allAssets);
+        $pageSize = WhatsAppMediaService::ASSETS_PAGE_SIZE;
+        $totalPages = (int) max(1, ceil($total / $pageSize));
+        $nextPage = $context->getAssetsPage() + 1;
+
+        if ($nextPage > $totalPages) {
+            return '🖼 *No more images.* You have seen all '.$total.' saved image(s).'
+                .WhatsAppActionHints::assetPageActions($totalPages, $totalPages);
+        }
+
+        return $this->assets($user, $nextPage);
+    }
+
+    protected function assetsPrev(User $user): string|WhatsAppOutboundMessage
+    {
+        $context = WhatsAppSessionContext::for($user);
+        $prevPage = max(1, $context->getAssetsPage() - 1);
+
+        if ($context->getAssetsPage() <= 1) {
+            return '🖼 *Already on the newest images* (page 1).'
+                .WhatsAppActionHints::assetPageActions(1, (int) max(1, ceil(count($this->media->syncAssetsToSession($user)) / WhatsAppMediaService::ASSETS_PAGE_SIZE)));
+        }
+
+        return $this->assets($user, $prevPage);
+    }
+
+    protected function viewAsset(User $user, int $index): WhatsAppOutboundMessage
     {
         $this->requirePermission($user, 'assets');
 
@@ -1081,12 +1133,13 @@ class WhatsAppCommandExecutor
 
         $label = $this->friendlyAssetLabel($asset['name'] ?? 'Image');
 
-        return implode("\n", [
-            "🖼 *Image {$index}* — {$label}",
-            '',
-            'Tap to preview:',
-            $asset['url'],
-        ]).WhatsAppActionHints::viewAssetActions($index);
+        return WhatsAppOutboundMessage::withImages(
+            "🖼 *Image {$index}* — {$label}".WhatsAppActionHints::viewAssetActions($index),
+            [[
+                'url' => $asset['url'],
+                'caption' => "{$index}️⃣ {$label}",
+            ]],
+        );
     }
 
     protected function friendlyAssetLabel(string $name): string

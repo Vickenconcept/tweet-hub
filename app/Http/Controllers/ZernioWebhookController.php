@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessWhatsAppCommand;
 use App\Models\User;
+use App\Models\WhatsAppCommandLog;
 use App\Services\WhatsApp\WhatsAppInboundMedia;
 use App\Services\ZernioService;
 use Illuminate\Http\Request;
@@ -129,6 +130,16 @@ class ZernioWebhookController extends Controller
             }
             $userId = $user?->id;
         }
+
+        WhatsAppCommandLog::firstOrCreate(
+            ['zernio_event_id' => $eventId],
+            [
+                'from_phone' => $fromPhone,
+                'conversation_id' => $conversationId,
+                'command' => $messageText,
+                'status' => 'queued',
+            ]
+        );
 
         ProcessWhatsAppCommand::dispatch(
             $eventId,

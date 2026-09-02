@@ -11,6 +11,11 @@ class WhatsAppUserMessages
         return "You've been busy! Take a little break, then come back and message me again — I'll be here when you're ready.";
     }
 
+    public static function jobFailedTryAgain(): string
+    {
+        return '❌ Something went wrong on my side. Please send your message again in a moment.';
+    }
+
     public static function unsupportedFileType(): string
     {
         return '❌ That file is not supported. I can only save photos — JPEG, PNG, GIF, or WebP. Send an image, not a PDF, video, or document.';

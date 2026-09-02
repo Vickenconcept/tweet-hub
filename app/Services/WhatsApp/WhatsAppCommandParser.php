@@ -212,7 +212,19 @@ class WhatsAppCommandParser
         }
 
         if (in_array($lower, ['assets', 'my images', 'my assets', 'my media', 'my pictures', 'my photos'], true)) {
-            return ['action' => 'assets'];
+            return ['action' => 'assets', 'page' => 1];
+        }
+
+        if (in_array($lower, ['more images', 'next images', 'load more images', 'more photos', 'more pictures'], true)) {
+            return ['action' => 'assets_more'];
+        }
+
+        if (in_array($lower, ['previous images', 'prev images', 'back images', 'earlier images'], true)) {
+            return ['action' => 'assets_prev'];
+        }
+
+        if (preg_match('/^(?:my images|my photos|my pictures)\s+page\s+(\d+)\s*$/iu', $text, $matches)) {
+            return ['action' => 'assets', 'page' => max(1, (int) $matches[1])];
         }
 
         if (preg_match('/^(?:show|view|open)\s+(?:asset|image|picture|photo)\s+(\d+)\s*$/iu', $text, $matches)) {
@@ -232,7 +244,7 @@ class WhatsAppCommandParser
         }
 
         if (preg_match('/^(show|list)\s+(my\s+)?(assets|images|media|pictures|photos)$/i', $text)) {
-            return ['action' => 'assets'];
+            return ['action' => 'assets', 'page' => 1];
         }
 
         if (preg_match('/^notify\s+posts\s+(on|off)$/i', $text, $matches)) {
@@ -318,7 +330,7 @@ class WhatsAppCommandParser
         }
 
         if ($this->matchesIntent($lower, ['assets'], ['assets', 'images', 'media library', 'my images', 'my pictures', 'my photos', 'show images', 'show my images'])) {
-            return ['action' => 'assets'];
+            return ['action' => 'assets', 'page' => 1];
         }
 
         if (preg_match('/^(?:show|view|open)\s+(?:asset|image|picture|photo)\s+(\d+)$/iu', $text, $matches)) {

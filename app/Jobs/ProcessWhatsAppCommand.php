@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\WhatsAppCommandLog;
 use App\Services\WhatsApp\WhatsAppCommandExecutor;
 use App\Services\WhatsApp\WhatsAppIntentResolver;
+use App\Services\WhatsApp\WhatsAppOutboundMessage;
 use App\Services\WhatsApp\WhatsAppUserMessages;
 use App\Services\ZernioService;
 use Illuminate\Bus\Queueable;
@@ -23,6 +24,8 @@ class ProcessWhatsAppCommand implements ShouldQueue
     public int $tries = 3;
 
     public array $backoff = [10, 30, 60];
+
+    public int $timeout = 120;
 
     public function __construct(
         protected string $eventId,
@@ -45,9 +48,13 @@ class ProcessWhatsAppCommand implements ShouldQueue
                 'from_phone' => $this->fromPhone,
                 'conversation_id' => $this->conversationId,
                 'command' => $this->messageText,
-                'status' => 'processing',
+                'status' => 'queued',
             ]
         );
+
+        if ($log->status !== 'success') {
+            $log->update(['status' => 'processing']);
+        }
 
         Log::info('WhatsApp command processing', [
             'event_id' => $this->eventId,
@@ -63,8 +70,8 @@ class ProcessWhatsAppCommand implements ShouldQueue
             return;
         }
 
-        $pendingReply = Cache::get($this->replyCacheKey());
-        if (is_string($pendingReply) && $pendingReply !== '') {
+        $pendingReply = WhatsAppOutboundMessage::fromCached(Cache::get($this->replyCacheKey()));
+        if ($pendingReply !== null) {
             Log::info('WhatsApp retrying pending Zernio delivery', ['event_id' => $this->eventId]);
             $this->deliverReply($zernio, $log, $pendingReply);
 
@@ -100,7 +107,7 @@ class ProcessWhatsAppCommand implements ShouldQueue
         if ($this->unsupportedMedia && $this->mediaUrls === []) {
             $response = WhatsAppUserMessages::unsupportedFileType();
             $log->update(['parsed_action' => 'unsupported_media']);
-            Cache::put($this->replyCacheKey(), $response, now()->addHours(2));
+            $this->cacheReply($response);
             $this->deliverReply($zernio, $log, $response, failedStatus: true, error: 'unsupported_media');
 
             return;
@@ -130,7 +137,7 @@ class ProcessWhatsAppCommand implements ShouldQueue
             }
 
             $response = $executor->handleInboundMedia($user, $this->mediaUrls, $this->messageText, $intentResolver, $log);
-            Cache::put($this->replyCacheKey(), $response, now()->addHours(2));
+            $this->cacheReply($response);
             $this->deliverReply($zernio, $log, $response);
 
             return;
@@ -167,34 +174,75 @@ class ProcessWhatsAppCommand implements ShouldQueue
         }
 
         $response = $executor->execute($user, $parsed, $log);
-        Cache::put($this->replyCacheKey(), $response, now()->addHours(2));
+        $this->cacheReply($response);
         $this->deliverReply($zernio, $log, $response);
 
         if ($log->fresh()->status !== 'success') {
             return;
         }
 
+        $responsePreview = WhatsAppOutboundMessage::wrap($response)->text;
+
         Log::info('WhatsApp command completed', [
             'event_id' => $this->eventId,
             'user_id' => $user->id,
             'action' => $parsed['action'] ?? 'unknown',
             'status' => $log->fresh()->status,
-            'response_preview' => mb_substr($response, 0, 120),
+            'response_preview' => mb_substr($responsePreview, 0, 120),
         ]);
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Log::error('WhatsApp command job failed permanently', [
+            'event_id' => $this->eventId,
+            'error' => $exception?->getMessage(),
+        ]);
+
+        $log = WhatsAppCommandLog::where('zernio_event_id', $this->eventId)->first();
+        if ($log === null || $log->status === 'success') {
+            return;
+        }
+
+        try {
+            $response = WhatsAppUserMessages::jobFailedTryAgain();
+            app(ZernioService::class)->sendInboxMessage($this->conversationId, $response);
+            $log->update([
+                'status' => 'failed',
+                'error' => 'job_failed',
+                'response_preview' => mb_substr($response, 0, 500),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp failure notice could not be sent', [
+                'event_id' => $this->eventId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function cacheReply(string|WhatsAppOutboundMessage $response): void
+    {
+        Cache::put(
+            $this->replyCacheKey(),
+            WhatsAppOutboundMessage::wrap($response)->toArray(),
+            now()->addHours(2),
+        );
     }
 
     protected function deliverReply(
         ZernioService $zernio,
         WhatsAppCommandLog $log,
-        string $response,
+        string|WhatsAppOutboundMessage $response,
         bool $failedStatus = false,
         ?string $error = null,
     ): void {
-        if ($zernio->sendInboxMessage($this->conversationId, $response)) {
+        $outbound = WhatsAppOutboundMessage::wrap($response);
+
+        if ($zernio->deliverOutboundMessage($this->conversationId, $outbound)) {
             Cache::forget($this->replyCacheKey());
             $log->update([
                 'status' => $failedStatus ? 'failed' : 'success',
-                'response_preview' => mb_substr($response, 0, 500),
+                'response_preview' => mb_substr($outbound->text, 0, 500),
                 'error' => $error,
             ]);
 
@@ -203,7 +251,7 @@ class ProcessWhatsAppCommand implements ShouldQueue
 
         $log->update([
             'status' => 'processing',
-            'response_preview' => mb_substr($response, 0, 500),
+            'response_preview' => mb_substr($outbound->text, 0, 500),
             'error' => 'zernio_send_failed',
         ]);
 

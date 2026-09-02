@@ -87,6 +87,18 @@ class WhatsAppSessionContext
         return $asset['code'] ?? null;
     }
 
+    public function storeAssetsPage(int $page): void
+    {
+        Cache::put($this->key('assets_page'), max(1, $page), now()->addHours(24));
+    }
+
+    public function getAssetsPage(): int
+    {
+        $page = Cache::get($this->key('assets_page'), 1);
+
+        return max(1, (int) $page);
+    }
+
     /**
      * @param  array{code: string, url: string, name?: string}  $image
      */

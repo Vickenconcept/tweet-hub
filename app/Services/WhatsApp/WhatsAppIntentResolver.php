@@ -82,6 +82,7 @@ class WhatsAppIntentResolver
             'help', 'commands', '?', 'shortcut', 'shortcuts', 'help shortcuts',
             'status', 'settings', 'queue', 'ideas', 'drafts', 'mentions', 'mention',
             'keywords', 'keyword', 'confirm', 'unlink', 'assets', 'my images',
+            'more images', 'next images', 'previous images', 'prev images',
             'start', 'onboard', 'hello', 'hi',
         ], true);
     }

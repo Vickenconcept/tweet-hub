@@ -22,3 +22,6 @@ Schedule::command('interactions:process-auto-dms')->everyFifteenMinutes();
 
 // WhatsApp mention alerts every 15 minutes
 Schedule::command('whatsapp:check-mention-alerts')->everyFifteenMinutes();
+
+// Re-dispatch WhatsApp commands stuck in queue (worker was down, etc.)
+Schedule::command('whatsapp:retry-stale')->everyMinute();

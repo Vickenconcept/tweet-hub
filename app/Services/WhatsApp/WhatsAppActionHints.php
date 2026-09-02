@@ -136,6 +136,28 @@ class WhatsAppActionHints
         ]);
     }
 
+    public static function assetPageActions(int $page, int $totalPages): string
+    {
+        $actions = [
+            ['icon' => '✍️', 'cmd' => 'post with image 1: Your caption'],
+            ['icon' => '👁️', 'cmd' => 'show image 1'],
+        ];
+
+        if ($page < $totalPages) {
+            $actions[] = ['icon' => '➡️', 'cmd' => 'more images'];
+        }
+
+        if ($page > 1) {
+            $actions[] = ['icon' => '⬅️', 'cmd' => 'previous images'];
+        }
+
+        if ($totalPages > 1) {
+            $actions[] = ['icon' => '🔄', 'cmd' => 'my images'];
+        }
+
+        return self::actions('➡️ *Try:*', $actions);
+    }
+
     public static function imageActions(): string
     {
         return self::actions('➡️ *Try:*', [

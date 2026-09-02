@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Log;
 
 class WhatsAppMediaService
 {
+    public const ASSETS_PAGE_SIZE = 5;
+
+    public const ASSETS_SESSION_LIMIT = 50;
     public function __construct(
         protected ChatGptService $chatGptService,
         protected ZernioService $zernio,
@@ -64,7 +67,7 @@ class WhatsAppMediaService
         }
     }
 
-    public function recentAssets(User $user, int $limit = 8): array
+    public function recentAssets(User $user, int $limit = self::ASSETS_SESSION_LIMIT): array
     {
         return Asset::where('user_id', $user->id)
             ->orderByDesc('created_at')
