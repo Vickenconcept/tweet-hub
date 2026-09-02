@@ -136,11 +136,11 @@ class WhatsAppActionHints
         ]);
     }
 
-    public static function assetPageActions(int $page, int $totalPages): string
+    public static function assetPageActions(int $page, int $totalPages, int $firstImageNum = 1): string
     {
         $actions = [
-            ['icon' => '✍️', 'cmd' => 'post with image 1: Your caption'],
-            ['icon' => '👁️', 'cmd' => 'show image 1'],
+            ['icon' => '👁️', 'cmd' => 'show image '.$firstImageNum],
+            ['icon' => '✍️', 'cmd' => 'post with image '.$firstImageNum.': Your caption'],
         ];
 
         if ($page < $totalPages) {
@@ -151,11 +151,11 @@ class WhatsAppActionHints
             $actions[] = ['icon' => '⬅️', 'cmd' => 'previous images'];
         }
 
-        if ($totalPages > 1) {
-            $actions[] = ['icon' => '🔄', 'cmd' => 'my images'];
+        if ($totalPages > 1 && $page < $totalPages) {
+            $actions[] = ['icon' => '📄', 'cmd' => 'my images page '.($page + 1)];
         }
 
-        return self::actions('➡️ *Try:*', $actions);
+        return self::actions('➡️ *Next:*', $actions);
     }
 
     public static function imageActions(): string

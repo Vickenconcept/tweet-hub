@@ -1077,9 +1077,10 @@ class WhatsAppCommandExecutor
         }
 
         $header = '🖼 *Your images* — page '.$page.'/'.$totalPages.' ('.$total.' total)';
+        $firstOnPage = $offset + 1;
 
         return WhatsAppOutboundMessage::withImages(
-            $header.WhatsAppActionHints::assetPageActions($page, $totalPages),
+            $header.WhatsAppActionHints::assetPageActions($page, $totalPages, $firstOnPage),
             $images,
         );
     }
@@ -1095,7 +1096,7 @@ class WhatsAppCommandExecutor
 
         if ($nextPage > $totalPages) {
             return '🖼 *No more images.* You have seen all '.$total.' saved image(s).'
-                .WhatsAppActionHints::assetPageActions($totalPages, $totalPages);
+                .WhatsAppActionHints::assetPageActions($totalPages, $totalPages, max(1, ($totalPages - 1) * $pageSize + 1));
         }
 
         return $this->assets($user, $nextPage);
@@ -1107,8 +1108,10 @@ class WhatsAppCommandExecutor
         $prevPage = max(1, $context->getAssetsPage() - 1);
 
         if ($context->getAssetsPage() <= 1) {
+            $totalPages = (int) max(1, ceil(count($this->media->syncAssetsToSession($user)) / WhatsAppMediaService::ASSETS_PAGE_SIZE));
+
             return '🖼 *Already on the newest images* (page 1).'
-                .WhatsAppActionHints::assetPageActions(1, (int) max(1, ceil(count($this->media->syncAssetsToSession($user)) / WhatsAppMediaService::ASSETS_PAGE_SIZE)));
+                .WhatsAppActionHints::assetPageActions(1, $totalPages, 1);
         }
 
         return $this->assets($user, $prevPage);
