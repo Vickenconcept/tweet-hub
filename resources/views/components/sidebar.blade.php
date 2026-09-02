@@ -280,12 +280,12 @@
                                 </div>
                             </div>
                         </div>
-
+                        
                         <script>
                             function disconnectTwitter() {
                                 document.getElementById('disconnectModal').style.display = 'flex';
                             }
-
+                            
                             function closeDisconnectModal() {
                                 document.getElementById('disconnectModal').style.display = 'none';
                             }

@@ -70,6 +70,14 @@ class WhatsAppIntentResolver
             return true;
         }
 
+        if (preg_match('/^post\s+image\s+#?\d+/i', $text) || preg_match('/^schedule\s+image\s+#?\d+/i', $text)) {
+            return true;
+        }
+
+        if (preg_match('/^(post|schedule)\s+(?:this|the|my)\s+image\b/i', $text)) {
+            return true;
+        }
+
         if (preg_match('/^(post|schedule|thread|draft|generate|image|search|reply|add keyword|remove keyword):/i', $text)) {
             return true;
         }
@@ -83,6 +91,7 @@ class WhatsAppIntentResolver
             'status', 'settings', 'queue', 'ideas', 'drafts', 'mentions', 'mention',
             'keywords', 'keyword', 'confirm', 'unlink', 'assets', 'my images',
             'more images', 'next images', 'previous images', 'prev images',
+            'post this image', 'post image 1', 'schedule this image',
             'start', 'onboard', 'hello', 'hi',
         ], true);
     }

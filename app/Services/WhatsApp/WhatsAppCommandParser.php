@@ -120,6 +120,11 @@ class WhatsAppCommandParser
             return ['action' => 'verify', 'code' => $text];
         }
 
+        $imagePostSchedule = WhatsAppAssetAttachments::parseImagePostScheduleIntent($text);
+        if ($imagePostSchedule !== null) {
+            return $imagePostSchedule;
+        }
+
         if (preg_match('/^post:\s*(.+)$/is', $text, $matches)) {
             return ['action' => 'post', 'content' => trim($matches[1])];
         }
@@ -131,7 +136,7 @@ class WhatsAppCommandParser
             }
         }
 
-        if (preg_match('/^schedule\s+(tomorrow|today|tonight|next\s+\w+)\s+(.+)$/is', $text, $matches)) {
+        if (preg_match('/^schedule:\s*(.+?)\s*\|\s*(.+)$/is', $text, $matches)) {
             return [
                 'action' => 'schedule',
                 'when' => trim($matches[1]),
@@ -139,7 +144,7 @@ class WhatsAppCommandParser
             ];
         }
 
-        if (preg_match('/^schedule:\s*(.+?)\s*\|\s*(.+)$/is', $text, $matches)) {
+        if (preg_match('/^schedule\s+(tomorrow|today|tonight|next\s+\w+)\s+(.+)$/is', $text, $matches)) {
             return [
                 'action' => 'schedule',
                 'when' => trim($matches[1]),

@@ -140,6 +140,7 @@ class WhatsAppActionHints
     {
         $actions = [
             ['icon' => '👁️', 'cmd' => 'show image '.$firstImageNum],
+            ['icon' => '📤', 'cmd' => 'post image '.$firstImageNum],
             ['icon' => '✍️', 'cmd' => 'post with image '.$firstImageNum.': Your caption'],
         ];
 
@@ -178,9 +179,10 @@ class WhatsAppActionHints
 
     public static function inboundImageActions(int $index): string
     {
-        return self::actions('➡️ *Try:*', [
+        return self::actions('➡️ *Next:*', [
+            ['icon' => '📤', 'cmd' => 'post this image'],
             ['icon' => '✍️', 'cmd' => 'post with the image: Your caption'],
-            ['icon' => '✍️', 'cmd' => 'post: Your caption with the image'],
+            ['icon' => '🕐', 'cmd' => 'schedule this image at 10pm'],
             ['icon' => '🖼️', 'cmd' => 'my images'],
         ]);
     }

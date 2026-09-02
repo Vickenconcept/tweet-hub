@@ -142,7 +142,10 @@ class WhatsAppCommandExecutor
 
             $caption = trim($caption);
             if ($caption !== '') {
-                if (! preg_match('/\bwith\s+(?:the|this|my)\s+image\b|\bwith\s+image\s+\d+\b/iu', $caption)) {
+                $caption = $this->assetAttachments->normalizePhotoCaption($caption);
+
+                if (! preg_match('/\bwith\s+(?:the|this|my)\s+image\b|\bwith\s+image\s+\d+\b|^\s*schedule:/iu', $caption)
+                    && preg_match('/^(post|schedule)\b/iu', $caption)) {
                     $caption .= ' with the image';
                 }
 
@@ -225,8 +228,8 @@ class WhatsAppCommandExecutor
         $this->requireTwitter($user);
 
         $content = trim($this->assetAttachments->apply($user, $content));
-        if ($content === '') {
-            throw new \RuntimeException('Post content cannot be empty. Use: post: your text');
+        if (! $this->assetAttachments->isPostable($content)) {
+            throw new \RuntimeException('Post content cannot be empty. Use: *post: your text* or *post image 1*');
         }
 
         if (! $user->whatsapp_quick_mode) {
@@ -247,8 +250,8 @@ class WhatsAppCommandExecutor
         $this->requireTwitter($user);
 
         $content = trim($this->assetAttachments->apply($user, $content));
-        if ($content === '' || $when === '') {
-            throw new \RuntimeException('Use: schedule: tomorrow 9am | your tweet text');
+        if ($when === '' || ! $this->assetAttachments->isPostable($content)) {
+            throw new \RuntimeException('Use: *schedule: tomorrow 9am | your text* or *schedule image 1 at 10pm*');
         }
 
         $scheduledAt = $this->parseScheduleTime($when, $user);

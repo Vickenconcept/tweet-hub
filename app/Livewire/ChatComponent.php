@@ -388,61 +388,61 @@ class ChatComponent extends Component
             return null;
         }
 
-        $mediaIds = [];
-        $mediaCodes = [];
+            $mediaIds = [];
+            $mediaCodes = [];
         $matches = [];
 
         if (preg_match_all('/\[(img|vid|gif):([a-zA-Z0-9]+)\]/', $part, $matches)) {
-            foreach ($matches[2] as $index => $code) {
-                $asset = Asset::where('user_id', $user->id)->where('code', $code)->first();
+                foreach ($matches[2] as $index => $code) {
+                    $asset = Asset::where('user_id', $user->id)->where('code', $code)->first();
                 if (! $asset) {
                     Log::error('Asset not found', ['code' => $code, 'user_id' => $user->id]);
                     continue;
                 }
 
-                if ($asset->type === 'video') {
-                    $this->errorMessage = 'Video uploads are temporarily disabled due to Twitter API limitations. The post will continue without the video.';
+                        if ($asset->type === 'video') {
+                            $this->errorMessage = 'Video uploads are temporarily disabled due to Twitter API limitations. The post will continue without the video.';
                     continue;
-                }
-
-                $mediaId = null;
+                        }
+                        
+                            $mediaId = null;
                 if (str_contains($asset->original_name, '.gif')) {
                     try {
                         $mediaId = str_contains($asset->path, 'cloudinary.com')
                             ? $this->uploadCloudinaryMediaToTwitter($twitter, $asset->path)
                             : $twitter->uploadLocalMedia($asset->path);
-                    } catch (\Exception $e) {
+                            } catch (\Exception $e) {
                         Log::warning('GIF upload failed', ['code' => $code, 'error' => $e->getMessage()]);
-                    }
-
+                            }
+                            
                     if (! $mediaId) {
-                        $this->errorMessage = 'GIF upload failed. The post will continue without the GIF.';
+                            $this->errorMessage = 'GIF upload failed. The post will continue without the GIF.';
                         if (trim($part) === '') {
                             $part = '🎬';
                         }
                         continue;
                     }
                 } elseif (str_contains($asset->path, 'cloudinary.com')) {
-                    $mediaId = $this->uploadCloudinaryMediaToTwitter($twitter, $asset->path);
-                } else {
+                            $mediaId = $this->uploadCloudinaryMediaToTwitter($twitter, $asset->path);
+                        } else {
                     $mediaId = $twitter->uploadLocalMedia(storage_path('app/public/'.$asset->path));
-                }
-
-                if (! $mediaId) {
-                    if (str_contains($asset->path, 'cloudinary.com')) {
-                        $tempFile = $this->downloadCloudinaryFile($asset->path);
-                        if ($tempFile) {
-                            $mediaId = $twitter->uploadMedia($tempFile);
-                            unlink($tempFile);
                         }
-                    } else {
+                        
+                if (! $mediaId) {
+                            if (str_contains($asset->path, 'cloudinary.com')) {
+                                $tempFile = $this->downloadCloudinaryFile($asset->path);
+                                if ($tempFile) {
+                                    $mediaId = $twitter->uploadMedia($tempFile);
+                            unlink($tempFile);
+                                }
+                            } else {
                         $mediaId = $twitter->uploadMedia(storage_path('app/public/'.$asset->path));
-                    }
-                }
-
-                if ($mediaId) {
-                    $mediaIds[] = $mediaId;
-                    $mediaCodes[] = $code;
+                            }
+                        }
+                        
+                        if ($mediaId) {
+                            $mediaIds[] = $mediaId;
+                            $mediaCodes[] = $code;
                 }
             }
 
@@ -554,8 +554,8 @@ class ChatComponent extends Component
                         'sent_at' => now(),
                     ]);
                 }
-            }
-        } catch (\Exception $e) {
+                }
+            } catch (\Exception $e) {
             $message = $e->getMessage();
             if (str_contains($message, 'already scheduled, publishing, or was posted')) {
                 $message = 'This exact content was already posted in the last 24 hours. Change the text slightly and try again.';
@@ -563,7 +563,7 @@ class ChatComponent extends Component
                 $message = 'X posting limit reached (25 posts/hour). Wait for the limit to reset and try again.';
             }
             $this->errorMessage = 'Failed to post to X: '.$message;
-            return;
+                return;
         }
 
         $this->message = '';

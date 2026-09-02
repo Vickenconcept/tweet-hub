@@ -62,7 +62,7 @@ class WhatsAppHelpMessages
             '',
             '🖼 *Images*',
             '• My images — browse saved images (5 per page)',
-            '• Send a photo in WhatsApp — bot saves it for posting',
+            '• Send a photo in WhatsApp — attach text like *post: caption* or *post this image*',
             '• Image: a rocket launching at sunset',
             '• Post: Launch day! with the image',
             '',
