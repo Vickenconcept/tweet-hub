@@ -85,7 +85,7 @@
                                id="autoCommentUrl" 
                                wire:model="autoCommentUrl"
                                placeholder="https://example.com/about"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                               class="form-input">
                         <p class="text-sm text-gray-500 mt-1">URL to provide context about your brand/business for AI-generated comments</p>
                     </div>
 
@@ -97,7 +97,7 @@
                                   wire:model="autoCommentContextPrompt"
                                   rows="4"
                                   placeholder="e.g., We are a tech startup focused on AI solutions. Our tone is friendly and professional..."
-                                  class="w-full border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                                  class="form-input"></textarea>
                         <p class="text-sm text-gray-500 mt-1">Additional context to guide AI when generating comments. This will be combined with the URL context.</p>
                     </div>
 
@@ -110,7 +110,7 @@
                                wire:model="dailyCommentLimit"
                                min="1" 
                                max="1000"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                               class="form-input max-w-xs">
                         <p class="text-sm text-gray-500 mt-1">Maximum number of auto-comments per day (1-1000)</p>
                     </div>
                 </div>

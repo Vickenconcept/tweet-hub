@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Post;
 use App\Models\Asset;
 use App\Services\TwitterService;
+use App\Services\WhatsApp\WhatsAppNotificationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -22,7 +23,7 @@ class ProcessScheduledPost implements ShouldQueue
         protected Post $post
     ) {}
 
-    public function handle(): void
+    public function handle(WhatsAppNotificationService $whatsAppNotifications): void
     {
         $tempFiles = [];
 
@@ -180,6 +181,12 @@ class ProcessScheduledPost implements ShouldQueue
                 'twitter_post_id' => $response->data->id ?? null,
             ]);
 
+            $tweetId = $response->data->id ?? null;
+            $url = $tweetId && $user->twitter_username
+                ? "https://x.com/{$user->twitter_username}/status/{$tweetId}"
+                : null;
+            $whatsAppNotifications->notifyPostPublished($user, $this->post->content, $url);
+
         } catch (\Exception $e) {
             // Log the error
             Log::error('Failed to process scheduled post', [
@@ -200,6 +207,12 @@ class ProcessScheduledPost implements ShouldQueue
                     'error_message' => $e->getMessage(),
                 ]);
             }
+
+            $whatsAppNotifications->notifyPostFailed(
+                $this->post->user,
+                $this->post->content,
+                $e->getMessage()
+            );
 
             throw $e;
         } finally {

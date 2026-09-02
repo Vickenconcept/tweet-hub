@@ -20,6 +20,65 @@ class ChatGptService
         $this->apiKey = env('OPENAI_API_KEY');
     }
 
+    /**
+     * Parse a user message into structured JSON using a lightweight GPT call.
+     */
+    public function parseJsonIntent(string $systemPrompt, string $userMessage): ?array
+    {
+        if (empty($this->apiKey)) {
+            return null;
+        }
+
+        $url = 'https://api.openai.com/v1/chat/completions';
+        $maxRetries = 3;
+        $retryDelay = 5;
+
+        for ($retry = 0; $retry < $maxRetries; $retry++) {
+            try {
+                $response = $this->httpClient->post($url, [
+                    'headers' => [
+                        'Authorization' => 'Bearer '.$this->apiKey,
+                        'Content-Type' => 'application/json',
+                    ],
+                    'json' => [
+                        'model' => 'gpt-4o-mini',
+                        'messages' => [
+                            ['role' => 'system', 'content' => $systemPrompt],
+                            ['role' => 'user', 'content' => $userMessage],
+                        ],
+                        'temperature' => 0,
+                        'response_format' => ['type' => 'json_object'],
+                    ],
+                    'timeout' => 20,
+                ]);
+
+                $content = json_decode($response->getBody(), true)['choices'][0]['message']['content'] ?? null;
+                if (! $content) {
+                    return null;
+                }
+
+                $parsed = json_decode($content, true);
+
+                return is_array($parsed) ? $parsed : null;
+            } catch (ClientException $e) {
+                if ($e->getResponse()->getStatusCode() === 429 && $retry < $maxRetries - 1) {
+                    Log::info("OpenAI rate limit. Retrying in {$retryDelay} seconds.");
+                    sleep($retryDelay);
+                } else {
+                    Log::error('OpenAI intent parse failed: '.$e->getMessage());
+
+                    return null;
+                }
+            } catch (\Exception $e) {
+                Log::error('OpenAI intent parse error: '.$e->getMessage());
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     public function generateContent($inputData)
     {
         $url = 'https://api.openai.com/v1/chat/completions';

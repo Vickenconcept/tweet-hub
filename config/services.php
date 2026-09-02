@@ -50,4 +50,18 @@ return [
         'api_secret' => env('CLOUDINARY_API_SECRET'),
     ],
 
+    'zernio' => [
+        'api_key' => env('ZERNIO_API_KEY'),
+        'webhook_secret' => env('ZERNIO_WEBHOOK_SECRET'),
+        'whatsapp_account_id' => env('ZERNIO_WHATSAPP_ACCOUNT_ID'),
+        'bot_phone_number' => env('ZERNIO_BOT_PHONE_NUMBER'),
+        'base_url' => env('ZERNIO_BASE_URL', 'https://zernio.com/api/v1'),
+        'verification_template' => env('ZERNIO_WHATSAPP_VERIFICATION_TEMPLATE'),
+        'alert_template' => env('ZERNIO_WHATSAPP_ALERT_TEMPLATE'),
+        'template_language' => env('ZERNIO_WHATSAPP_TEMPLATE_LANGUAGE', 'en'),
+        'timeout' => env('ZERNIO_TIMEOUT', 30),
+        'connect_timeout' => env('ZERNIO_CONNECT_TIMEOUT', 15),
+        'retry_attempts' => env('ZERNIO_RETRY_ATTEMPTS', 3),
+    ],
+
 ];

@@ -40,6 +40,18 @@ class User extends Authenticatable
         'interaction_auto_dm_template',
         'interaction_auto_dm_daily_limit',
         'timezone',
+        'whatsapp_phone',
+        'whatsapp_verified_at',
+        'whatsapp_bot_enabled',
+        'whatsapp_permissions',
+        'whatsapp_quick_mode',
+        'whatsapp_verification_code',
+        'whatsapp_verification_expires_at',
+        'zernio_conversation_id',
+        'whatsapp_notify_post_published',
+        'whatsapp_notify_post_failed',
+        'whatsapp_notify_new_mentions',
+        'whatsapp_language',
     ];
 
     /**
@@ -50,6 +62,7 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'whatsapp_verification_code',
     ];
 
     /**
@@ -63,6 +76,14 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'twitter_account_connected' => 'boolean',
             'last_daily_ideas_generated' => 'datetime',
+            'whatsapp_verified_at' => 'datetime',
+            'whatsapp_bot_enabled' => 'boolean',
+            'whatsapp_permissions' => 'array',
+            'whatsapp_quick_mode' => 'boolean',
+            'whatsapp_verification_expires_at' => 'datetime',
+            'whatsapp_notify_post_published' => 'boolean',
+            'whatsapp_notify_post_failed' => 'boolean',
+            'whatsapp_notify_new_mentions' => 'boolean',
         ];
     }
 
@@ -130,5 +151,55 @@ class User extends Authenticatable
     public function preferredTimezone(): string
     {
         return $this->timezone ?: config('app.timezone');
+    }
+
+    public function whatsappCommandLogs(): HasMany
+    {
+        return $this->hasMany(WhatsAppCommandLog::class);
+    }
+
+    public function isWhatsAppVerified(): bool
+    {
+        return $this->whatsapp_verified_at !== null && ! empty($this->whatsapp_phone);
+    }
+
+    public function isWhatsAppBotActive(): bool
+    {
+        return $this->isWhatsAppVerified() && $this->whatsapp_bot_enabled;
+    }
+
+    public function defaultWhatsAppPermissions(): array
+    {
+        return [
+            'post' => true,
+            'schedule' => true,
+            'queue' => true,
+            'delete' => true,
+            'ideas' => true,
+            'generate' => true,
+            'draft' => true,
+            'mentions' => true,
+            'reply' => true,
+            'keywords' => true,
+            'search' => true,
+            'analytics' => true,
+            'automation' => false,
+            'auto_posts' => true,
+            'image' => true,
+            'assets' => true,
+            'notifications' => true,
+            'bookmarks' => true,
+            'thread' => true,
+        ];
+    }
+
+    public function whatsAppPermissions(): array
+    {
+        return array_merge($this->defaultWhatsAppPermissions(), $this->whatsapp_permissions ?? []);
+    }
+
+    public function hasWhatsAppPermission(string $key): bool
+    {
+        return (bool) ($this->whatsAppPermissions()[$key] ?? false);
     }
 }

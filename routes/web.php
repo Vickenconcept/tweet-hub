@@ -3,8 +3,12 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ZernioWebhookController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TwitterAuthController;
+
+Route::post('/', [ZernioWebhookController::class, 'inbox']);
+Route::post('/webhooks/zernio/inbox', [ZernioWebhookController::class, 'inbox']);
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -58,7 +62,7 @@ Route::middleware(['auth'])->group(function () {
     Route::view('business-auto-posts', 'business-auto-posts')->name('business-auto-posts');
     Route::view('auto-direct-messages', 'auto-direct-messages')->name('auto-direct-messages');
     Route::view('twitter-settings', 'twitter-settings')->name('twitter-settings');
-    
+    Route::view('whatsapp-settings', 'whatsapp-settings')->name('whatsapp-settings');
     // Route::resource('reseller', ResellerController::class);
 
 });

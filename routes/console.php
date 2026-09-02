@@ -19,3 +19,6 @@ Schedule::command('twitter:reset-daily-counters')->dailyAt('00:00');
 
 // Process interaction auto DMs every 15 minutes
 Schedule::command('interactions:process-auto-dms')->everyFifteenMinutes();
+
+// WhatsApp mention alerts every 15 minutes
+Schedule::command('whatsapp:check-mention-alerts')->everyFifteenMinutes();

@@ -1,0 +1,73 @@
+<?php
+
+namespace App\Services\WhatsApp;
+
+use App\Models\Asset;
+use App\Models\User;
+use App\Services\ChatGptService;
+use App\Services\CloudinaryService;
+
+class WhatsAppMediaService
+{
+    public function __construct(
+        protected ChatGptService $chatGptService,
+        protected CloudinaryService $cloudinaryService,
+    ) {}
+
+    public function generateImage(User $user, string $prompt): array
+    {
+        $prompt = trim($prompt);
+        if (mb_strlen($prompt) < 10) {
+            throw new \RuntimeException('Image prompt must be at least 10 characters.');
+        }
+
+        $imageUrl = $this->chatGptService->generateImage($prompt, '1024x1024', 'vivid');
+        if (! $imageUrl) {
+            throw new \RuntimeException('Image generation failed. Try again later.');
+        }
+
+        $imageContent = file_get_contents($imageUrl);
+        if ($imageContent === false) {
+            throw new \RuntimeException('Failed to download generated image.');
+        }
+
+        $code = uniqid();
+        $tempFile = tempnam(sys_get_temp_dir(), 'wa_ai_').'.png';
+        file_put_contents($tempFile, $imageContent);
+
+        try {
+            $uploadResult = $this->cloudinaryService->uploadFileFromPath($tempFile, 'ai_generated_'.$code.'.png');
+
+            Asset::create([
+                'user_id' => $user->id,
+                'type' => 'image',
+                'path' => $uploadResult['file_path'],
+                'original_name' => 'ai_generated_'.$code.'.png',
+                'code' => $code,
+            ]);
+
+            return [
+                'code' => $code,
+                'url' => $uploadResult['file_path'],
+            ];
+        } finally {
+            if (file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+        }
+    }
+
+    public function recentAssets(User $user, int $limit = 5): array
+    {
+        return Asset::where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Asset $asset) => [
+                'code' => $asset->code,
+                'name' => $asset->original_name,
+                'url' => $asset->path,
+            ])
+            ->all();
+    }
+}
