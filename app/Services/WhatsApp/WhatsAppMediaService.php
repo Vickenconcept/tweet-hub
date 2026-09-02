@@ -11,8 +11,12 @@ class WhatsAppMediaService
 {
     public function __construct(
         protected ChatGptService $chatGptService,
-        protected CloudinaryService $cloudinaryService,
     ) {}
+
+    protected function cloudinary(): CloudinaryService
+    {
+        return app(CloudinaryService::class);
+    }
 
     public function generateImage(User $user, string $prompt): array
     {
@@ -36,7 +40,7 @@ class WhatsAppMediaService
         file_put_contents($tempFile, $imageContent);
 
         try {
-            $uploadResult = $this->cloudinaryService->uploadFileFromPath($tempFile, 'ai_generated_'.$code.'.png');
+            $uploadResult = $this->cloudinary()->uploadFileFromPath($tempFile, 'ai_generated_'.$code.'.png');
 
             Asset::create([
                 'user_id' => $user->id,

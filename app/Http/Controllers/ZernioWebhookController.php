@@ -137,6 +137,7 @@ class ZernioWebhookController extends Controller
             'user_id' => $userId,
             'message_preview' => mb_substr($messageText, 0, 120),
             'user_linked' => $userId !== null,
+            'queue_connection' => config('queue.default'),
         ]);
 
         return response('OK', 200);
