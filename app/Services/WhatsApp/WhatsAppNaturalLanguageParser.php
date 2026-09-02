@@ -16,6 +16,8 @@ Single actions:
 - ideas {"topic":"optional subject"}
 - post {"content":"tweet text"}
 - schedule {"when":"time phrase","content":"tweet text"}
+- post_attached_image {"content":"optional caption text"} — user sent a photo and wants to post it now
+- schedule_attached_image {"when":"date/time phrase","content":"optional caption text"} — user sent a photo and wants to schedule it
 - generate {"prompt":"..."} · draft {"content":"..."} · image {"prompt":"..."}
 - post_idea {"index":1} · schedule_idea {"index":1,"when":"10pm"}
 - follow {"target":"handle"} · unfollow {"target":"handle"}
@@ -32,7 +34,9 @@ Multi-step (when user asks for 2+ things in one message):
 
 Rules:
 - If user mentions creating/writing content AND scheduling/posting it, use create_and_schedule or workflow (not post alone).
-- If user wants a post/tweet WITH an image/picture/photo (generate visual + attach), use create_with_image_and_post or create_with_image_and_schedule — not image alone.
+- If user sent an existing photo and wants to post/schedule it (not generate AI art), use post or schedule with their caption as content — the app attaches the uploaded image automatically.
+- If the message includes a calendar date like 09/03/2026 and a time like 12 am, put both in when verbatim.
+- If user wants a post/tweet WITH an AI-generated image, use create_with_image_and_post or create_with_image_and_schedule — not image alone.
 - image_prompt is optional; if omitted, derive a visual from topic.
 - If user refers to a previously generated idea ("post the first idea", "publish idea 2"), use post_idea with index.
 - Extract times verbatim: "10:00 pm", "tomorrow 9am", "in 2 hours".
