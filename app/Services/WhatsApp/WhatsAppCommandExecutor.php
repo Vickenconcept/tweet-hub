@@ -85,7 +85,7 @@ class WhatsAppCommandExecutor
             $log->update([
                 'parsed_action' => $action,
                 'status' => 'pending',
-                'response_preview' => mb_substr($response, 0, 500),
+                'response_preview' => mb_substr(WhatsAppOutboundMessage::wrap($response)->text, 0, 500),
             ]);
 
             return $response;
