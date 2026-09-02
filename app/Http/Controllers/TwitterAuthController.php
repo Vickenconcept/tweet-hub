@@ -104,8 +104,13 @@ class TwitterAuthController extends Controller
         $user->twitter_account_id = $accessToken['user_id'] ?? null;
         $user->twitter_access_token = $accessToken['oauth_token'] ?? null;
         $user->twitter_access_token_secret = $accessToken['oauth_token_secret'] ?? null;
-        
-        // Now fetch profile information using the same v2 API that the Update Profile button uses
+
+        // OAuth 1.0a always returns screen_name — use as fallback if v2 profile fetch fails
+        if (! empty($accessToken['screen_name'])) {
+            $user->twitter_username = $accessToken['screen_name'];
+        }
+
+        // Enrich profile from v2 API when the app tier allows it
         $this->fetchAndSaveProfileDataV2($user);
         $saved = $user->save();
         
