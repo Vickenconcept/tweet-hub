@@ -81,7 +81,7 @@ class WhatsAppIntentResolver
         return in_array($lower, [
             'help', 'commands', '?', 'shortcut', 'shortcuts', 'help shortcuts',
             'status', 'settings', 'queue', 'ideas', 'drafts', 'mentions', 'mention',
-            'keywords', 'keyword', 'confirm', 'unlink', 'assets',
+            'keywords', 'keyword', 'confirm', 'unlink', 'assets', 'my images',
             'start', 'onboard', 'hello', 'hi',
         ], true);
     }
@@ -96,6 +96,11 @@ class WhatsAppIntentResolver
         $lower = strtolower($text);
 
         if (preg_match('/\b(?:create|write|make|compose|generate).*\b(?:post|tweet).*\b(?:then|and)\b.*\b(?:schedule|post|publish)/i', $text)) {
+            return true;
+        }
+
+        if (preg_match('/\b(?:with\s+(?:an?\s+)?(?:image|picture|photo|graphic|visual|illustration)s?\b)/i', $text)
+            && preg_match('/\b(?:post|tweet|schedule|create|write|publish)\b/i', $text)) {
             return true;
         }
 

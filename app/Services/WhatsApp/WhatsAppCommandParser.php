@@ -211,11 +211,27 @@ class WhatsAppCommandParser
             return ['action' => 'image', 'prompt' => trim($matches[1])];
         }
 
-        if ($lower === 'assets') {
+        if (in_array($lower, ['assets', 'my images', 'my assets', 'my media', 'my pictures', 'my photos'], true)) {
             return ['action' => 'assets'];
         }
 
-        if (preg_match('/^(show|list)\s+(my\s+)?(assets|images|media)$/i', $text)) {
+        if (preg_match('/^(?:show|view|open)\s+(?:asset|image|picture|photo)\s+(\d+)\s*$/iu', $text, $matches)) {
+            return ['action' => 'view_asset', 'index' => max(1, (int) $matches[1])];
+        }
+
+        if (preg_match('/^(?:image|picture|photo)\s+(\d+)\s*$/iu', $text, $matches)) {
+            return ['action' => 'view_asset', 'index' => max(1, (int) $matches[1])];
+        }
+
+        if (preg_match('/^post\s+with\s+(?:the|this|my)\s+image:\s*(.+)$/is', $text, $matches)) {
+            return ['action' => 'post', 'content' => trim($matches[1]).' with the image'];
+        }
+
+        if (preg_match('/^post\s+with\s+image\s+(\d+):\s*(.+)$/is', $text, $matches)) {
+            return ['action' => 'post', 'content' => trim($matches[2]).' with image '.$matches[1]];
+        }
+
+        if (preg_match('/^(show|list)\s+(my\s+)?(assets|images|media|pictures|photos)$/i', $text)) {
             return ['action' => 'assets'];
         }
 
@@ -301,8 +317,12 @@ class WhatsAppCommandParser
             return ['action' => 'drafts'];
         }
 
-        if ($this->matchesIntent($lower, ['assets'], ['assets', 'images', 'media library', 'my images'])) {
+        if ($this->matchesIntent($lower, ['assets'], ['assets', 'images', 'media library', 'my images', 'my pictures', 'my photos', 'show images', 'show my images'])) {
             return ['action' => 'assets'];
+        }
+
+        if (preg_match('/^(?:show|view|open)\s+(?:asset|image|picture|photo)\s+(\d+)$/iu', $text, $matches)) {
+            return ['action' => 'view_asset', 'index' => max(1, (int) $matches[1])];
         }
 
         if ($this->matchesIntent($lower, ['help'], ['help', 'what can you do', 'what do you do', 'how does this work', 'how do i use', 'commands', 'menu'])) {
@@ -430,6 +450,10 @@ class WhatsAppCommandParser
 
     protected function parseCompoundIntent(string $text): ?array
     {
+        if ($withImage = $this->parseCreateWithImageIntent($text)) {
+            return $withImage;
+        }
+
         if (preg_match(
             '/\b(?:create|write|make|compose|draft|generate)\s+(?:a\s+)?(?:post|tweet)\s+about\s+(.+?)\s+(?:then|and)\s+schedul(?:e|le)(?:\s+it)?(?:\s+(?:by|at|for))?\s+(.+)/iu',
             $text,
@@ -498,6 +522,59 @@ class WhatsAppCommandParser
 
         if (preg_match('/^like\s+(\d+)\b/iu', $text, $matches)) {
             return ['action' => 'like', 'index' => max(1, (int) $matches[1])];
+        }
+
+        return null;
+    }
+
+    protected function parseCreateWithImageIntent(string $text): ?array
+    {
+        $media = '(?:image|picture|photo|graphic|visual|illustration)s?';
+
+        if (preg_match(
+            '/\b(?:create|write|make|compose|draft|generate)\s+(?:a\s+)?(?:post|tweet)\s+(?:about|on|for)\s+(.+?)\s+with\s+(?:an?\s+)?'.$media.'\s+(?:and\s+)?schedul(?:e|le)(?:\s+it)?\s+(?:at|by|for)\s+(.+)/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'create_with_image_and_schedule',
+                'topic' => $this->cleanCompoundTopic($matches[1]),
+                'when' => trim($matches[2]),
+            ];
+        }
+
+        if (preg_match(
+            '/\bschedul(?:e|le)\s+(?:a\s+)?(?:post|tweet)\s+(?:about|on|for)\s+(.+?)\s+with\s+(?:an?\s+)?'.$media.'\s+(?:at|by|for)\s+(.+)/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'create_with_image_and_schedule',
+                'topic' => $this->cleanCompoundTopic($matches[1]),
+                'when' => trim($matches[2]),
+            ];
+        }
+
+        if (preg_match(
+            '/\b(?:create|write|make|compose|post|publish|tweet)\s+(?:a\s+)?(?:post|tweet)\s+(?:about|on|for)\s+(.+?)\s+with\s+(?:an?\s+)?'.$media.'(?:\s+(?:and\s+)?(?:post|publish|tweet)(?:\s+it|\s+now)?)?\s*$/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'create_with_image_and_post',
+                'topic' => $this->cleanCompoundTopic($matches[1]),
+            ];
+        }
+
+        if (preg_match(
+            '/^(?:post|publish|tweet)\s+(?:about|on|for)\s+(.+?)\s+with\s+(?:an?\s+)?'.$media.'(?:\s+(?:and\s+)?(?:post|publish|now|it))?\s*$/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'create_with_image_and_post',
+                'topic' => $this->cleanCompoundTopic($matches[1]),
+            ];
         }
 
         return null;

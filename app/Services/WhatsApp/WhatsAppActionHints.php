@@ -45,6 +45,7 @@ class WhatsAppActionHints
         return self::actions('➡️ *Try:*', [
             ['icon' => '📬', 'cmd' => 'show my mentions'],
             ['icon' => '✍️', 'cmd' => 'post: Hello world!'],
+            ['icon' => '🖼️', 'cmd' => 'my images'],
             ['icon' => '📊', 'cmd' => 'status'],
             ['icon' => '❓', 'cmd' => 'help'],
         ]);
@@ -128,17 +129,37 @@ class WhatsAppActionHints
 
     public static function assetActions(): string
     {
-        return self::actions('➡️ *Actions:*', [
-            ['icon' => '✍️', 'cmd' => 'post: Hello [img:code]'],
+        return self::actions('➡️ *Try:*', [
+            ['icon' => '✍️', 'cmd' => 'post: Your caption with image 1'],
+            ['icon' => '✍️', 'cmd' => 'post with image 1: Your caption'],
             ['icon' => '🎨', 'cmd' => 'image: your description'],
         ]);
     }
 
-    public static function imageActions(string $code): string
+    public static function imageActions(): string
     {
-        return self::actions('➡️ *Actions:*', [
-            ['icon' => '✍️', 'cmd' => 'post: Hello [img:'.$code.']'],
-            ['icon' => '🖼️', 'cmd' => 'assets'],
+        return self::actions('➡️ *Try:*', [
+            ['icon' => '✍️', 'cmd' => 'post: Your caption with the image'],
+            ['icon' => '✍️', 'cmd' => 'post with the image: Your caption'],
+            ['icon' => '🖼️', 'cmd' => 'my images'],
+        ]);
+    }
+
+    public static function viewAssetActions(int $index): string
+    {
+        return self::actions('➡️ *Try:*', [
+            ['icon' => '✍️', 'cmd' => 'post with image '.$index.': Your caption'],
+            ['icon' => '✍️', 'cmd' => 'post: Your caption with image '.$index],
+            ['icon' => '🖼️', 'cmd' => 'my images'],
+        ]);
+    }
+
+    public static function inboundImageActions(int $index): string
+    {
+        return self::actions('➡️ *Try:*', [
+            ['icon' => '✍️', 'cmd' => 'post with the image: Your caption'],
+            ['icon' => '✍️', 'cmd' => 'post: Your caption with the image'],
+            ['icon' => '🖼️', 'cmd' => 'my images'],
         ]);
     }
 }

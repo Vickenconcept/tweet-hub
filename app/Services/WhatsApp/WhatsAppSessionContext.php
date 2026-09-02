@@ -56,6 +56,60 @@ class WhatsAppSessionContext
     }
 
     /**
+     * @param  array<int, array{code: string, name: string, url: string, type?: string}>  $assets
+     */
+    public function storeAssets(array $assets): void
+    {
+        Cache::put($this->key('assets'), array_values($assets), now()->addHours(24));
+    }
+
+    /**
+     * @return array<int, array{code: string, name: string, url: string, type?: string}>
+     */
+    public function getAssets(): array
+    {
+        $assets = Cache::get($this->key('assets'), []);
+
+        return is_array($assets) ? $assets : [];
+    }
+
+    public function getAssetByIndex(int $index): ?array
+    {
+        $assets = $this->getAssets();
+
+        return $assets[$index - 1] ?? null;
+    }
+
+    public function getAssetCodeByIndex(int $index): ?string
+    {
+        $asset = $this->getAssetByIndex($index);
+
+        return $asset['code'] ?? null;
+    }
+
+    /**
+     * @param  array{code: string, url: string, name?: string}  $image
+     */
+    public function storeLastImage(array $image): void
+    {
+        Cache::put($this->key('last_image'), $image, now()->addHours(24));
+    }
+
+    public function getLastImage(): ?array
+    {
+        $image = Cache::get($this->key('last_image'));
+
+        return is_array($image) ? $image : null;
+    }
+
+    public function getLastImageCode(): ?string
+    {
+        $image = $this->getLastImage();
+
+        return is_string($image['code'] ?? null) && $image['code'] !== '' ? $image['code'] : null;
+    }
+
+    /**
      * @return array<int, string>
      */
     public function parseNumberedIdeas(string $response): array

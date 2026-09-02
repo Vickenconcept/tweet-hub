@@ -19,6 +19,7 @@ class WhatsAppCommandExecutor
         protected WhatsAppMediaService $media,
         protected WhatsAppNotificationService $notifications,
         protected WhatsAppTweetPublisher $publisher,
+        protected WhatsAppAssetAttachments $assetAttachments,
     ) {}
 
     public function execute(User $user, array $parsed, WhatsAppCommandLog $log): string
@@ -39,6 +40,8 @@ class WhatsAppCommandExecutor
                 'retweet' => $this->retweetFromContext($user, (int) ($parsed['index'] ?? 0)),
                 'like' => $this->likeFromContext($user, (int) ($parsed['index'] ?? 0)),
                 'create_and_schedule' => $this->createAndSchedule($user, $parsed),
+                'create_with_image_and_post' => $this->createWithImageAndPublish($user, $parsed, 'post'),
+                'create_with_image_and_schedule' => $this->createWithImageAndPublish($user, $parsed, 'schedule'),
                 'workflow' => $this->workflow($user, $parsed),
                 'schedule' => $this->schedule($user, $parsed['when'] ?? '', $parsed['content'] ?? ''),
                 'queue' => $this->queue($user),
@@ -62,6 +65,7 @@ class WhatsAppCommandExecutor
                 'auto_posts_toggle' => $this->toggleAutoPosts($user, $parsed['index'] ?? 0, $parsed['enabled'] ?? false),
                 'image' => $this->generateImage($user, $parsed['prompt'] ?? ''),
                 'assets' => $this->assets($user),
+                'view_asset' => $this->viewAsset($user, (int) ($parsed['index'] ?? 0)),
                 'notify_posts_on' => $this->toggleNotifyPosts($user, true),
                 'notify_posts_off' => $this->toggleNotifyPosts($user, false),
                 'notify_mentions_on' => $this->toggleNotifyMentions($user, true),
@@ -94,6 +98,88 @@ class WhatsAppCommandExecutor
 
             $log->update([
                 'parsed_action' => $action,
+                'status' => 'failed',
+                'error' => $e->getMessage(),
+                'response_preview' => mb_substr($userMessage, 0, 500),
+            ]);
+
+            return $userMessage;
+        }
+    }
+
+    /**
+     * @param  array<int, string>  $mediaUrls
+     */
+    public function handleInboundMedia(
+        User $user,
+        array $mediaUrls,
+        string $caption,
+        WhatsAppIntentResolver $intentResolver,
+        WhatsAppCommandLog $log,
+    ): string {
+        $this->requirePermission($user, 'assets');
+
+        try {
+            $imported = [];
+            foreach ($mediaUrls as $url) {
+                $imported[] = $this->media->importFromUrl($user, $url);
+            }
+
+            $assets = $this->media->syncAssetsToSession($user);
+            if ($imported !== []) {
+                WhatsAppSessionContext::for($user)->storeLastImage($imported[0]);
+            }
+
+            $imageNumber = 1;
+            foreach ($assets as $index => $asset) {
+                if (($asset['code'] ?? '') === ($imported[0]['code'] ?? '')) {
+                    $imageNumber = $index + 1;
+                    break;
+                }
+            }
+
+            $caption = trim($caption);
+            if ($caption !== '') {
+                if (! preg_match('/\bwith\s+(?:the|this|my)\s+image\b|\bwith\s+image\s+\d+\b/iu', $caption)) {
+                    $caption .= ' with the image';
+                }
+
+                $parsed = $intentResolver->resolve($caption);
+                $log->update([
+                    'command' => $caption,
+                    'parsed_action' => $parsed['action'] ?? 'unknown',
+                ]);
+
+                $prefix = implode("\n", [
+                    '📸 *Image saved*',
+                    '',
+                    'Tap to preview:',
+                    $imported[0]['url'],
+                    '',
+                ]);
+
+                return $prefix.$this->execute($user, $parsed, $log);
+            }
+
+            $log->update(['parsed_action' => 'inbound_image']);
+
+            return implode("\n", [
+                '📸 *Image saved!*',
+                '',
+                "Saved as image *{$imageNumber}* in your library.",
+                '',
+                'Tap to preview:',
+                $imported[0]['url'],
+            ]).WhatsAppActionHints::inboundImageActions($imageNumber);
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp inbound image failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $userMessage = WhatsAppUserMessages::fromException($e);
+            $log->update([
+                'parsed_action' => 'inbound_image',
                 'status' => 'failed',
                 'error' => $e->getMessage(),
                 'response_preview' => mb_substr($userMessage, 0, 500),
@@ -137,7 +223,7 @@ class WhatsAppCommandExecutor
         $this->requirePermission($user, 'post');
         $this->requireTwitter($user);
 
-        $content = trim($content);
+        $content = trim($this->assetAttachments->apply($user, $content));
         if ($content === '') {
             throw new \RuntimeException('Post content cannot be empty. Use: post: your text');
         }
@@ -148,7 +234,7 @@ class WhatsAppCommandExecutor
                 'content' => $content,
             ], now()->addMinutes(10));
 
-            return '⚠️ *Confirm post?*'."\n\n".mb_substr($content, 0, 200).WhatsAppActionHints::confirm();
+            return '⚠️ *Confirm post?*'."\n\n".$this->assetAttachments->displayText($content).WhatsAppActionHints::confirm();
         }
 
         return $this->publishTweet($user, $content);
@@ -159,7 +245,7 @@ class WhatsAppCommandExecutor
         $this->requirePermission($user, 'schedule');
         $this->requireTwitter($user);
 
-        $content = trim($content);
+        $content = trim($this->assetAttachments->apply($user, $content));
         if ($content === '' || $when === '') {
             throw new \RuntimeException('Use: schedule: tomorrow 9am | your tweet text');
         }
@@ -178,7 +264,7 @@ class WhatsAppCommandExecutor
 
             return '⚠️ *Confirm schedule?*'."\n\n".
                 $scheduledAt->timezone($user->preferredTimezone())->format('D M j, g:i A')."\n".
-                mb_substr($content, 0, 180).WhatsAppActionHints::confirm();
+                $this->assetAttachments->displayText($content).WhatsAppActionHints::confirm();
         }
 
         return $this->createScheduledPost($user, $content, $scheduledAt);
@@ -435,6 +521,51 @@ class WhatsAppCommandExecutor
         return "✍️ Composed about *{$topic}*:\n\"{$content}\"\n\n".$result;
     }
 
+    protected function createWithImageAndPublish(User $user, array $parsed, string $mode): string
+    {
+        $this->requirePermission($user, 'image');
+        $this->requirePermission($user, $mode === 'post' ? 'post' : 'schedule');
+        $this->requireTwitter($user);
+
+        $topic = trim((string) ($parsed['topic'] ?? ''));
+        $when = trim((string) ($parsed['when'] ?? ''));
+        $imagePrompt = trim((string) ($parsed['image_prompt'] ?? ''));
+
+        if ($topic === '') {
+            throw new \RuntimeException(
+                'Tell me the topic, e.g. *create a post about AI with an image and schedule at 10pm*'
+            );
+        }
+
+        if ($mode === 'schedule' && $when === '') {
+            throw new \RuntimeException('Tell me when to schedule, e.g. *at 10pm* or *tomorrow 9am*.');
+        }
+
+        $content = $this->composeTweetAbout($topic);
+        $visualPrompt = $imagePrompt !== ''
+            ? $imagePrompt
+            : "Professional social media graphic, eye-catching, no text overlay, about: {$topic}";
+
+        $image = $this->media->generateImage($user, $visualPrompt);
+        $this->media->syncAssetsToSession($user);
+        WhatsAppSessionContext::for($user)->storeLastImage($image);
+        $contentWithMedia = trim($content).' [img:'.$image['code'].']';
+
+        $header = implode("\n", [
+            '🎨 *Image generated*',
+            '',
+            '✍️ *Post text:*',
+            '"'.$content.'"',
+            '',
+        ]);
+
+        if ($mode === 'post') {
+            return $header.$this->post($user, $contentWithMedia);
+        }
+
+        return $header.$this->schedule($user, $when, $contentWithMedia);
+    }
+
     protected function workflow(User $user, array $parsed): string
     {
         $steps = $parsed['steps'] ?? [];
@@ -444,6 +575,7 @@ class WhatsAppCommandExecutor
 
         $composedContent = null;
         $lastResponse = '';
+        $attachedImageCode = null;
 
         foreach ($steps as $step) {
             if (! is_array($step)) {
@@ -463,9 +595,30 @@ class WhatsAppCommandExecutor
                 continue;
             }
 
+            if (in_array($stepAction, ['image', 'generate_image', 'add_image'], true)) {
+                $this->requirePermission($user, 'image');
+
+                $prompt = trim((string) ($step['prompt'] ?? $step['image_prompt'] ?? $step['topic'] ?? ''));
+                if ($prompt === '' && $composedContent !== null) {
+                    $prompt = "Professional social media graphic, no text overlay, matching: {$composedContent}";
+                }
+                if ($prompt === '') {
+                    throw new \RuntimeException('Image step needs a description.');
+                }
+
+                $image = $this->media->generateImage($user, $prompt);
+                $attachedImageCode = $image['code'];
+                $lastResponse = '🎨 Image ready (`'.$attachedImageCode.'`).';
+
+                continue;
+            }
+
             if ($stepAction === 'schedule') {
                 $when = trim((string) ($step['when'] ?? $step['time'] ?? ''));
                 $content = trim((string) ($step['content'] ?? $composedContent ?? ''));
+                if ($attachedImageCode !== null) {
+                    $content = trim($content).' [img:'.$attachedImageCode.']';
+                }
                 if ($when === '' || $content === '') {
                     throw new \RuntimeException('Schedule step needs a time and tweet content.');
                 }
@@ -475,6 +628,9 @@ class WhatsAppCommandExecutor
 
             if (in_array($stepAction, ['post', 'publish'], true)) {
                 $content = trim((string) ($step['content'] ?? $composedContent ?? ''));
+                if ($attachedImageCode !== null) {
+                    $content = trim($content).' [img:'.$attachedImageCode.']';
+                }
                 if ($content === '') {
                     throw new \RuntimeException('Post step needs tweet content.');
                 }
@@ -490,6 +646,10 @@ class WhatsAppCommandExecutor
         }
 
         if ($composedContent !== null && $lastResponse !== '') {
+            if ($attachedImageCode !== null) {
+                $composedContent = trim($composedContent).' [img:'.$attachedImageCode.']';
+            }
+
             Cache::put($this->pendingKey($user), [
                 'action' => 'post',
                 'content' => $composedContent,
@@ -868,33 +1028,75 @@ class WhatsAppCommandExecutor
         $this->requirePermission($user, 'image');
 
         $result = $this->media->generateImage($user, $prompt);
+        $this->media->syncAssetsToSession($user);
+        WhatsAppSessionContext::for($user)->storeLastImage($result);
 
         return implode("\n", [
-            '🎨 *Image generated*',
+            '🎨 *Image ready!*',
             '',
-            'Asset code: '.$result['code'],
-            '',
+            'Tap to preview:',
             $result['url'],
-        ]).WhatsAppActionHints::imageActions($result['code']);
+        ]).WhatsAppActionHints::imageActions();
     }
 
     protected function assets(User $user): string
     {
         $this->requirePermission($user, 'assets');
 
-        $assets = $this->media->recentAssets($user);
+        $assets = $this->media->syncAssetsToSession($user);
 
         if (empty($assets)) {
-            return '🖼 No assets yet.';
+            return '🖼 No images yet.'.WhatsAppActionHints::assetActions();
         }
 
-        $lines = ['🖼 *Recent Assets*', ''];
+        $lines = ['🖼 *Your images*', 'Tap a link to preview in chat.', ''];
 
         foreach ($assets as $index => $asset) {
-            $lines[] = ($index + 1).'. `'.$asset['code'].'` — '.$asset['name'];
+            $num = $index + 1;
+            $label = $this->friendlyAssetLabel($asset['name'] ?? 'Image');
+            $lines[] = "{$num}️⃣ {$label}";
+            $lines[] = $asset['url'];
+            $lines[] = '';
         }
 
         return implode("\n", $lines).WhatsAppActionHints::assetActions();
+    }
+
+    protected function viewAsset(User $user, int $index): string
+    {
+        $this->requirePermission($user, 'assets');
+
+        if ($index < 1) {
+            throw new \RuntimeException('Use: *show image 1* (see *my images* for numbers).');
+        }
+
+        $assets = $this->media->syncAssetsToSession($user);
+        $asset = $assets[$index - 1] ?? null;
+
+        if ($asset === null) {
+            throw new \RuntimeException("No image #{$index}. Send *my images* to see your saved images.");
+        }
+
+        WhatsAppSessionContext::for($user)->storeLastImage($asset);
+
+        $label = $this->friendlyAssetLabel($asset['name'] ?? 'Image');
+
+        return implode("\n", [
+            "🖼 *Image {$index}* — {$label}",
+            '',
+            'Tap to preview:',
+            $asset['url'],
+        ]).WhatsAppActionHints::viewAssetActions($index);
+    }
+
+    protected function friendlyAssetLabel(string $name): string
+    {
+        $name = str_replace(['_', '-'], ' ', $name);
+        if (str_starts_with(strtolower($name), 'ai generated')) {
+            return 'AI image';
+        }
+
+        return ucfirst($name);
     }
 
     protected function toggleNotifyPosts(User $user, bool $enabled): string
@@ -1012,7 +1214,10 @@ class WhatsAppCommandExecutor
         $this->requirePermission($user, 'thread');
         $this->requireTwitter($user);
 
-        $parts = array_values(array_filter(array_map('trim', $parts)));
+        $parts = array_values(array_filter(array_map(
+            fn ($part) => trim($this->assetAttachments->apply($user, $part)),
+            $parts
+        )));
         if (count($parts) < 2) {
             throw new \RuntimeException('Use: thread: part 1 | part 2 (min 2 parts, separate with |)');
         }
@@ -1112,7 +1317,7 @@ class WhatsAppCommandExecutor
 
         $local = $scheduledAt->copy()->timezone($user->preferredTimezone());
 
-        return '✅ Scheduled for '.$local->format('D M j, g:i A')."\n\"".mb_substr($content, 0, 120).'"';
+        return '✅ Scheduled for '.$local->format('D M j, g:i A')."\n\"".$this->assetAttachments->displayText($content).'"';
     }
 
     protected function performDeleteQueue(User $user, int $postId): string

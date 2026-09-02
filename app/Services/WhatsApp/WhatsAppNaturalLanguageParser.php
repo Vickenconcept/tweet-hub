@@ -12,7 +12,7 @@ You are the intent parser for XEngager WhatsApp bot. Understand what the user wa
 Return JSON only.
 
 Single actions:
-- queue, mentions, keywords, drafts, status, settings, assets, help
+- queue, mentions, keywords, drafts, status, settings, assets, help, view_asset {"index":1}
 - ideas {"topic":"optional subject"}
 - post {"content":"tweet text"}
 - schedule {"when":"time phrase","content":"tweet text"}
@@ -26,10 +26,14 @@ Single actions:
 
 Multi-step (when user asks for 2+ things in one message):
 - create_and_schedule {"topic":"subject","when":"time"} — e.g. "create a post about AI coding then schedule it at 10pm"
-- workflow {"steps":[{"action":"compose","topic":"..."},{"action":"schedule","when":"10:00 pm"}]} — for complex chains
+- create_with_image_and_post {"topic":"subject","image_prompt":"optional visual description"}
+- create_with_image_and_schedule {"topic":"subject","when":"time","image_prompt":"optional"}
+- workflow {"steps":[{"action":"compose","topic":"..."},{"action":"image","prompt":"..."},{"action":"schedule","when":"10:00 pm"}]}
 
 Rules:
 - If user mentions creating/writing content AND scheduling/posting it, use create_and_schedule or workflow (not post alone).
+- If user wants a post/tweet WITH an image/picture/photo (generate visual + attach), use create_with_image_and_post or create_with_image_and_schedule — not image alone.
+- image_prompt is optional; if omitted, derive a visual from topic.
 - If user refers to a previously generated idea ("post the first idea", "publish idea 2"), use post_idea with index.
 - Extract times verbatim: "10:00 pm", "tomorrow 9am", "in 2 hours".
 - For compose steps, put the subject in topic, not full tweet text.
@@ -67,6 +71,23 @@ PROMPT;
                 'action' => 'create_and_schedule',
                 'topic' => trim((string) ($parsed['topic'] ?? $parsed['subject'] ?? '')),
                 'when' => trim((string) ($parsed['when'] ?? $parsed['time'] ?? '')),
+            ];
+        }
+
+        if ($action === 'create_with_image_and_post') {
+            return [
+                'action' => 'create_with_image_and_post',
+                'topic' => trim((string) ($parsed['topic'] ?? $parsed['subject'] ?? '')),
+                'image_prompt' => trim((string) ($parsed['image_prompt'] ?? $parsed['prompt'] ?? '')),
+            ];
+        }
+
+        if ($action === 'create_with_image_and_schedule') {
+            return [
+                'action' => 'create_with_image_and_schedule',
+                'topic' => trim((string) ($parsed['topic'] ?? $parsed['subject'] ?? '')),
+                'when' => trim((string) ($parsed['when'] ?? $parsed['time'] ?? '')),
+                'image_prompt' => trim((string) ($parsed['image_prompt'] ?? $parsed['prompt'] ?? '')),
             ];
         }
 
@@ -128,6 +149,17 @@ PROMPT;
         }
         if ($action === 'help') {
             return ['action' => 'help'];
+        }
+
+        if ($action === 'view_asset') {
+            return [
+                'action' => 'view_asset',
+                'index' => max(1, (int) ($parsed['index'] ?? 1)),
+            ];
+        }
+
+        if ($action === 'assets') {
+            return ['action' => 'assets'];
         }
 
         $reconstructed = match ($action) {

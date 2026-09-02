@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessWhatsAppCommand;
 use App\Models\User;
+use App\Services\WhatsApp\WhatsAppInboundMedia;
 use App\Services\ZernioService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class ZernioWebhookController extends Controller
 {
-    public function inbox(Request $request, ZernioService $zernio): Response
+    public function inbox(Request $request, ZernioService $zernio, WhatsAppInboundMedia $inboundMedia): Response
     {
         $rawBody = $request->getContent();
         $signature = $request->header('X-Zernio-Signature') ?? $request->header('X-Late-Signature');
@@ -101,12 +102,16 @@ class ZernioWebhookController extends Controller
             ?? ''
         );
 
-        if (! $conversationId || $messageText === '') {
+        $mediaUrls = $inboundMedia->extractUrls($payload);
+
+        if (! $conversationId || ($messageText === '' && $mediaUrls === [])) {
             Log::info('Zernio webhook missing conversation or message', [
                 'conversation_id' => $conversationId,
                 'from_phone' => $fromPhone,
                 'message_preview' => mb_substr($messageText, 0, 200),
+                'has_media' => $mediaUrls !== [],
                 'payload_keys' => array_keys($payload),
+                'message_keys' => is_array($message) ? array_keys($message) : [],
             ]);
 
             return response('Missing fields', 200);
@@ -128,6 +133,7 @@ class ZernioWebhookController extends Controller
             $fromPhone,
             $messageText,
             $userId,
+            $mediaUrls,
         );
 
         Log::info('Zernio webhook queued WhatsApp command', [
@@ -138,6 +144,7 @@ class ZernioWebhookController extends Controller
             'message_preview' => mb_substr($messageText, 0, 120),
             'user_linked' => $userId !== null,
             'queue_connection' => config('queue.default'),
+            'media_count' => count($mediaUrls),
         ]);
 
         return response('OK', 200);

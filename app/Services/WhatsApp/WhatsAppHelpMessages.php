@@ -49,6 +49,8 @@ class WhatsAppHelpMessages
             '📝 *Post & schedule*',
             '• Post: Excited about our launch today!',
             '• Schedule tomorrow 9am | Good morning everyone',
+            '• Create a post about AI with an image and schedule at 10pm',
+            '• Post about fitness with a picture and post it',
             '• Show my queue',
             '• Give me post ideas',
             '',
@@ -57,6 +59,14 @@ class WhatsAppHelpMessages
             '• Reply to 1 with Thanks for reaching out!',
             '• Search for #startup',
             '• Show my keywords',
+            '',
+            '🖼 *Images*',
+            '• My images — see saved images in chat',
+            '• Send a photo in WhatsApp — bot saves it for posting',
+            '• Image: a rocket launching at sunset',
+            '• Post: Launch day! with the image',
+            '• Post with image 1: Your caption here',
+            '• Show image 1',
             '',
             '⚙️ *Account*',
             '• Status — connection & bot info',
@@ -120,36 +130,112 @@ class WhatsAppHelpMessages
 
     protected static function shortcutsEn(): string
     {
-        return implode("\n", [
-            '⚡ *Command shortcuts*',
-            '',
-            'post: text · schedule: time | text · thread: p1 | p2',
-            'queue · ideas · draft: text · drafts',
-            'mentions · reply 1: text · search: query · keywords',
-            'add keyword: word · remove keyword: word',
-            'analytics TWEET_ID · image: prompt · assets',
-            'auto posts · auto posts 1 on · notify mentions on',
-            'confirm · status · settings · lang es · unlink',
-        ]);
+        $commands = [
+            '*post:* text',
+            '*schedule:* time | text',
+            '*thread:* p1 | p2',
+            '*queue*',
+            '*ideas*',
+            '*draft:* text',
+            '*drafts*',
+            '*mentions*',
+            '*reply 1:* text',
+            '*search:* query',
+            '*keywords*',
+            '*add keyword:* word',
+            '*remove keyword:* word',
+            '*analytics* TWEET_ID',
+            '*image:* prompt',
+            '*my images*',
+            '*show image 1*',
+            '*post:* caption with image 1',
+            '*post with the image:* caption',
+            '*auto posts*',
+            '*auto posts 1 on*',
+            '*notify mentions on*',
+            '*confirm*',
+            '*status*',
+            '*settings*',
+            '*lang es*',
+            '*unlink*',
+        ];
+
+        return self::formatShortcutList('⚡ *Command shortcuts*', $commands);
     }
 
     protected static function shortcutsEs(): string
     {
-        return implode("\n", [
-            '⚡ *Atajos de comandos*',
-            '',
-            'post: texto · schedule: hora | texto · queue · mentions',
-            'reply 1: texto · search: consulta · confirm · status',
-        ]);
+        $commands = [
+            '*post:* texto',
+            '*schedule:* hora | texto',
+            '*thread:* p1 | p2',
+            '*queue*',
+            '*ideas*',
+            '*draft:* texto',
+            '*drafts*',
+            '*mentions*',
+            '*reply 1:* texto',
+            '*search:* consulta',
+            '*keywords*',
+            '*add keyword:* palabra',
+            '*remove keyword:* palabra',
+            '*analytics* TWEET_ID',
+            '*image:* prompt',
+            '*my images*',
+            '*show image 1*',
+            '*post:* caption with image 1',
+            '*post with the image:* caption',
+            '*auto posts*',
+            '*confirm*',
+            '*status*',
+            '*settings*',
+            '*lang es*',
+            '*unlink*',
+        ];
+
+        return self::formatShortcutList('⚡ *Atajos de comandos*', $commands);
     }
 
     protected static function shortcutsFr(): string
     {
-        return implode("\n", [
-            '⚡ *Raccourcis*',
-            '',
-            'post: texte · schedule: heure | texte · queue · mentions',
-            'reply 1: texte · search: requête · confirm · status',
-        ]);
+        $commands = [
+            '*post:* texte',
+            '*schedule:* heure | texte',
+            '*thread:* p1 | p2',
+            '*queue*',
+            '*ideas*',
+            '*draft:* texte',
+            '*drafts*',
+            '*mentions*',
+            '*reply 1:* texte',
+            '*search:* requête',
+            '*keywords*',
+            '*add keyword:* mot',
+            '*remove keyword:* mot',
+            '*analytics* TWEET_ID',
+            '*image:* prompt',
+            '*my images*',
+            '*show image 1*',
+            '*post:* caption with image 1',
+            '*post with the image:* caption',
+            '*auto posts*',
+            '*confirm*',
+            '*status*',
+            '*settings*',
+            '*lang fr*',
+            '*unlink*',
+        ];
+
+        return self::formatShortcutList('⚡ *Raccourcis*', $commands);
+    }
+
+    protected static function formatShortcutList(string $title, array $commands): string
+    {
+        $lines = [$title, ''];
+        foreach ($commands as $command) {
+            $lines[] = '• '.$command;
+        }
+
+        return implode("\n", $lines);
     }
 }

@@ -30,6 +30,7 @@ class ProcessWhatsAppCommand implements ShouldQueue
         protected string $fromPhone,
         protected string $messageText,
         protected ?int $userId = null,
+        protected array $mediaUrls = [],
     ) {}
 
     public function handle(
@@ -93,6 +94,36 @@ class ProcessWhatsAppCommand implements ShouldQueue
 
         if ($user->zernio_conversation_id !== $this->conversationId) {
             $user->update(['zernio_conversation_id' => $this->conversationId]);
+        }
+
+        if ($this->mediaUrls !== []) {
+            if (! $user->isWhatsAppVerified()) {
+                $log->update(['parsed_action' => 'unverified']);
+                $this->deliverReply(
+                    $zernio,
+                    $log,
+                    "👋 Link your WhatsApp in XEngager → WhatsApp Settings.\n\nOr reply: verify {6-digit code}",
+                );
+
+                return;
+            }
+
+            if (! $user->whatsapp_bot_enabled) {
+                $log->update(['parsed_action' => 'disabled']);
+                $this->deliverReply(
+                    $zernio,
+                    $log,
+                    'WhatsApp remote control is disabled. Enable it in XEngager → WhatsApp Settings.',
+                );
+
+                return;
+            }
+
+            $response = $executor->handleInboundMedia($user, $this->mediaUrls, $this->messageText, $intentResolver, $log);
+            Cache::put($this->replyCacheKey(), $response, now()->addHours(2));
+            $this->deliverReply($zernio, $log, $response);
+
+            return;
         }
 
         $parsed = $intentResolver->resolve($this->messageText);
