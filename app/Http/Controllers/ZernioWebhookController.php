@@ -102,14 +102,17 @@ class ZernioWebhookController extends Controller
             ?? ''
         );
 
-        $mediaUrls = $inboundMedia->extractUrls($payload);
+        $mediaAnalysis = $inboundMedia->analyze($payload);
+        $mediaUrls = $mediaAnalysis['image_urls'];
+        $unsupportedMedia = (bool) $mediaAnalysis['unsupported_media'];
 
-        if (! $conversationId || ($messageText === '' && $mediaUrls === [])) {
+        if (! $conversationId || ($messageText === '' && $mediaUrls === [] && ! $unsupportedMedia)) {
             Log::info('Zernio webhook missing conversation or message', [
                 'conversation_id' => $conversationId,
                 'from_phone' => $fromPhone,
                 'message_preview' => mb_substr($messageText, 0, 200),
                 'has_media' => $mediaUrls !== [],
+                'unsupported_media' => $unsupportedMedia,
                 'payload_keys' => array_keys($payload),
                 'message_keys' => is_array($message) ? array_keys($message) : [],
             ]);
@@ -134,6 +137,7 @@ class ZernioWebhookController extends Controller
             $messageText,
             $userId,
             $mediaUrls,
+            $unsupportedMedia,
         );
 
         Log::info('Zernio webhook queued WhatsApp command', [
@@ -145,6 +149,7 @@ class ZernioWebhookController extends Controller
             'user_linked' => $userId !== null,
             'queue_connection' => config('queue.default'),
             'media_count' => count($mediaUrls),
+            'unsupported_media' => $unsupportedMedia,
         ]);
 
         return response('OK', 200);

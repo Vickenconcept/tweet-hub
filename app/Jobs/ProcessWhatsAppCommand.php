@@ -31,6 +31,7 @@ class ProcessWhatsAppCommand implements ShouldQueue
         protected string $messageText,
         protected ?int $userId = null,
         protected array $mediaUrls = [],
+        protected bool $unsupportedMedia = false,
     ) {}
 
     public function handle(
@@ -94,6 +95,15 @@ class ProcessWhatsAppCommand implements ShouldQueue
 
         if ($user->zernio_conversation_id !== $this->conversationId) {
             $user->update(['zernio_conversation_id' => $this->conversationId]);
+        }
+
+        if ($this->unsupportedMedia && $this->mediaUrls === []) {
+            $response = WhatsAppUserMessages::unsupportedFileType();
+            $log->update(['parsed_action' => 'unsupported_media']);
+            Cache::put($this->replyCacheKey(), $response, now()->addHours(2));
+            $this->deliverReply($zernio, $log, $response, failedStatus: true, error: 'unsupported_media');
+
+            return;
         }
 
         if ($this->mediaUrls !== []) {

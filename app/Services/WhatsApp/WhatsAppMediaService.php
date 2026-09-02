@@ -6,13 +6,14 @@ use App\Models\Asset;
 use App\Models\User;
 use App\Services\ChatGptService;
 use App\Services\CloudinaryService;
-use Illuminate\Support\Facades\Http;
+use App\Services\ZernioService;
 use Illuminate\Support\Facades\Log;
 
 class WhatsAppMediaService
 {
     public function __construct(
         protected ChatGptService $chatGptService,
+        protected ZernioService $zernio,
     ) {}
 
     protected function cloudinary(): CloudinaryService
@@ -93,7 +94,9 @@ class WhatsAppMediaService
             throw new \RuntimeException('Could not read the image from WhatsApp.');
         }
 
-        $response = Http::timeout(60)->get($url);
+        $response = $this->isZernioMediaUrl($url)
+            ? $this->zernio->downloadAuthenticatedUrl($url)
+            : \Illuminate\Support\Facades\Http::timeout(60)->get($url);
         if (! $response->successful()) {
             Log::warning('WhatsApp inbound image download failed', [
                 'user_id' => $user->id,
@@ -141,5 +144,11 @@ class WhatsAppMediaService
                 @unlink($tempFile);
             }
         }
+    }
+
+    protected function isZernioMediaUrl(string $url): bool
+    {
+        return str_contains($url, 'zernio.com')
+            || str_contains($url, '/whatsapp/media/');
     }
 }

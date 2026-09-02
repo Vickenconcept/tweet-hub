@@ -11,6 +11,11 @@ class WhatsAppUserMessages
         return "You've been busy! Take a little break, then come back and message me again — I'll be here when you're ready.";
     }
 
+    public static function unsupportedFileType(): string
+    {
+        return '❌ That file is not supported. I can only save photos — JPEG, PNG, GIF, or WebP. Send an image, not a PDF, video, or document.';
+    }
+
     public static function fromException(Throwable $e): string
     {
         $raw = trim($e->getMessage());
@@ -51,6 +56,8 @@ class WhatsAppUserMessages
             'Image prompt',
             'Image generation failed',
             'Failed to download',
+            'That file is not an image',
+            'That file is not supported',
             'Keyword ',
             'No tweet #',
             'Send *mentions*',

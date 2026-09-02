@@ -595,6 +595,34 @@ class ZernioService
         return hash_equals($computed, $signature);
     }
 
+    /**
+     * Download a URL that requires Zernio API auth (e.g. WhatsApp inbound media).
+     */
+    public function downloadAuthenticatedUrl(string $url): Response
+    {
+        if (! $this->hasApiKey()) {
+            throw new \RuntimeException('Zernio API is not configured.');
+        }
+
+        $parsed = parse_url($url);
+        $host = strtolower((string) ($parsed['host'] ?? ''));
+
+        if ($host !== '' && (str_contains($host, 'zernio.com') || str_starts_with($url, $this->baseUrl))) {
+            $path = (string) ($parsed['path'] ?? '');
+            $apiPath = preg_replace('#^/api/v1#', '', $path) ?: $path;
+            parse_str((string) ($parsed['query'] ?? ''), $query);
+
+            return Http::withToken($this->apiKey)
+                ->connectTimeout($this->connectTimeoutSeconds)
+                ->timeout(max(60, $this->timeoutSeconds))
+                ->get($this->baseUrl.$apiPath, $query);
+        }
+
+        return Http::withToken($this->apiKey)
+            ->timeout(max(60, $this->timeoutSeconds))
+            ->get($url);
+    }
+
     protected function request(string $method, string $path, array $body = [], array $extraHeaders = []): Response
     {
         $lastException = null;
