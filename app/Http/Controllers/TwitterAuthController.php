@@ -16,7 +16,10 @@ class TwitterAuthController extends Controller
             config('services.twitter.api_key'),
             config('services.twitter.api_key_secret')
         );
-        $callbackUrl = config('services.twitter.callback_url') ?? route('twitter.callback');
+        $callbackUrl = $this->resolveTwitterCallbackUrl();
+
+        Log::info('Twitter OAuth redirect', ['callback_url' => $callbackUrl]);
+
         $requestToken = $twitter->oauth('oauth/request_token', ['oauth_callback' => $callbackUrl]);
 
         $request->session()->put('oauth_token', $requestToken['oauth_token']);
@@ -344,5 +347,37 @@ class TwitterAuthController extends Controller
         Log::info('Twitter account disconnected successfully', ['user_id' => $user->id]);
         
         return redirect()->back()->with('success', 'Twitter account disconnected successfully. You can reconnect anytime.');
+    }
+
+    /**
+     * OAuth callback sent to X must match APP_URL (and your X Developer Portal).
+     * X_CALLBACK_URL is optional; localhost values are ignored outside local env.
+     */
+    protected function resolveTwitterCallbackUrl(): string
+    {
+        $fromApp = route('twitter.callback', [], absolute: true);
+        $configured = config('services.twitter.callback_url');
+
+        if (empty($configured)) {
+            return $fromApp;
+        }
+
+        if (! app()->environment('local') && $this->isLocalUrl($configured)) {
+            Log::warning('Ignoring localhost X_CALLBACK_URL outside local environment', [
+                'configured' => $configured,
+                'using' => $fromApp,
+            ]);
+
+            return $fromApp;
+        }
+
+        return $configured;
+    }
+
+    protected function isLocalUrl(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return in_array($host, ['127.0.0.1', 'localhost', '::1'], true);
     }
 }
