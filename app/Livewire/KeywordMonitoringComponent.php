@@ -22,6 +22,7 @@ class KeywordMonitoringComponent extends Component
     public $successMessage = '';
     public $lastRefresh = '';
     public $selectedTweet = null;
+    public $selectedTweetId = null;
     public $replyContent = '';
     public $showReplyModal = false;
     public $currentPage = 1;
@@ -111,7 +112,7 @@ class KeywordMonitoringComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
             
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             $rateLimitCheck = $twitterService->isRateLimitedForSearch();
             
             Log::info('🔍 Rate limit status check (Search)', [
@@ -236,7 +237,7 @@ class KeywordMonitoringComponent extends Component
             return;
         }
 
-        if (!$user->twitter_account_connected || !$user->twitter_access_token || !$user->twitter_access_token_secret) {
+        if (! $user->isTwitterConnected()) {
             $this->errorMessage = 'Please connect your Twitter account first.';
             $this->searchLoading = false;
             $this->isLoading = false;
@@ -309,7 +310,7 @@ class KeywordMonitoringComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             
             if ($this->advancedSearch && !empty($this->searchQuery)) {
                 // Use advanced search
@@ -524,7 +525,7 @@ class KeywordMonitoringComponent extends Component
                         'bearer_token' => config('services.twitter.bearer_token'),
                     ];
                     
-                    $twitterService = new TwitterService($settings);
+                    $twitterService = new TwitterService($user);
                     $rateLimitCheck = $twitterService->isRateLimitedForSearch();
                     
                     if ($rateLimitCheck['rate_limited']) {
@@ -630,6 +631,13 @@ class KeywordMonitoringComponent extends Component
                     continue;
                 }
 
+                if (! $this->canReplyToTweet($tweet)) {
+                    Log::info('🤖 Skipping keyword AI auto-reply - X API reply not allowed', [
+                        'tweet_id' => $tweetId,
+                    ]);
+                    continue;
+                }
+
                 // Build a prompt for a short, positive, thoughtful reply tailored to THIS user's brand
                 $brandName = $user->twitter_name ?: $user->name ?: 'your personal brand';
                 $handleUsername = ltrim((string) $user->twitter_username, '@');
@@ -664,17 +672,16 @@ class KeywordMonitoringComponent extends Component
                     'bearer_token' => config('services.twitter.bearer_token'),
                 ];
 
-                $twitterService = new TwitterService($settings);
+                $twitterService = new TwitterService($user);
 
                 Log::info('🤖 Sending AI auto-reply to keyword tweet', [
                     'user_id' => $user->id,
                     'tweet_id' => $tweetId,
                 ]);
 
-                $response = $twitterService->createTweet(
+                $response = $twitterService->replyToKeywordTweet(
                     $replyText,
-                    [],
-                    $tweetId
+                    (string) $tweetId
                 );
 
                 if ($response && isset($response->data)) {
@@ -741,11 +748,24 @@ class KeywordMonitoringComponent extends Component
 
             $tweetPayloads = [];
             foreach ($this->tweets as $tweet) {
+                if (! $this->canReplyToTweet($tweet)) {
+                    continue;
+                }
+
                 $tweetPayloads[] = [
                     'id' => is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null),
                     'text' => is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? ''),
                     'author_id' => is_object($tweet) ? ($tweet->author_id ?? null) : ($tweet['author_id'] ?? null),
+                    'author_username' => is_object($tweet) ? ($tweet->author_username ?? null) : ($tweet['author_username'] ?? null),
                 ];
+            }
+
+            if (empty($tweetPayloads)) {
+                Log::info('⏭️ Auto-reply not triggered (keywords) - no tweets eligible for X API replies', [
+                    'user_id' => $user->id,
+                    'tweet_count' => $tweetCount,
+                ]);
+                return;
             }
 
             Log::info('🚀 Dispatching ProcessMentionAutoReplies job for keyword tweets', [
@@ -1103,14 +1123,39 @@ class KeywordMonitoringComponent extends Component
         $this->successMessage = '';
     }
 
+    public function canReplyToTweet($tweet): bool
+    {
+        $text = is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? '');
+        $authorUsername = is_object($tweet)
+            ? ($tweet->author_username ?? null)
+            : ($tweet['author_username'] ?? null);
+        $user = Auth::user();
+
+        return TwitterService::canApiReplyToTweet(
+            $text,
+            $user?->twitter_username,
+            $authorUsername
+        );
+    }
+
     public function replyToTweet($tweetId)
     {
         $tweet = collect($this->tweets)->firstWhere('id', $tweetId);
-        if ($tweet) {
-            $this->selectedTweet = $tweet;
-            $this->replyContent = '';
-            $this->showReplyModal = true;
+        if (! $tweet) {
+            return;
         }
+
+        if (! $this->canReplyToTweet($tweet)) {
+            $this->errorMessage = 'X only allows API replies when the author @mentioned you or it is your own post. Use Like or Retweet to engage with this tweet.';
+            $this->dispatch('show-error', $this->errorMessage);
+            return;
+        }
+
+        $this->selectedTweet = $tweet;
+        $this->selectedTweetId = (string) $tweetId;
+        $this->replyContent = '';
+        $this->errorMessage = '';
+        $this->showReplyModal = true;
     }
 
     public function sendReply()
@@ -1119,50 +1164,59 @@ class KeywordMonitoringComponent extends Component
             'replyContent' => 'required|string|min:1|max:280'
         ]);
 
-        if (!$this->selectedTweet) {
+        $tweetId = $this->selectedTweetId;
+        if (! $tweetId && $this->selectedTweet) {
+            $tweetId = is_object($this->selectedTweet)
+                ? ($this->selectedTweet->id ?? null)
+                : ($this->selectedTweet['id'] ?? null);
+        }
+
+        if (! $tweetId) {
             $this->errorMessage = 'Unable to send reply.';
+            $this->dispatch('show-error', $this->errorMessage);
+            return;
+        }
+
+        if ($this->selectedTweet && ! $this->canReplyToTweet($this->selectedTweet)) {
+            $this->errorMessage = 'X only allows API replies when the author @mentioned you or it is your own post. Use Like or Retweet to engage with this tweet.';
+            $this->dispatch('show-error', $this->errorMessage);
             return;
         }
 
         try {
             $user = Auth::user();
-            $settings = [
-                'account_id' => $user->twitter_account_id,
-                'access_token' => $user->twitter_access_token,
-                'access_token_secret' => $user->twitter_access_token_secret,
-                'consumer_key' => config('services.twitter.api_key'),
-                'consumer_secret' => config('services.twitter.api_key_secret'),
-                'bearer_token' => config('services.twitter.bearer_token'),
-            ];
-
-            $twitterService = new TwitterService($settings);
-            
-            // Get tweet ID - handle both object and array formats
-            $tweetId = is_object($this->selectedTweet) ? $this->selectedTweet->id : $this->selectedTweet['id'];
+            $twitterService = new TwitterService($user);
             
             Log::info('🔴 UI ACTION: Sending reply from keyword page', [
                 'tweet_id' => $tweetId,
                 'reply_text' => $this->replyContent
             ]);
-            
-            $response = $twitterService->createTweet(
-                $this->replyContent, 
-                [], 
-                $tweetId
+
+            $response = $twitterService->replyToKeywordTweet(
+                $this->replyContent,
+                (string) $tweetId
             );
             
-            if ($response && isset($response->data)) {
+            if ($response && isset($response->data) && ! empty($response->data->id)) {
                 $this->successMessage = 'Reply sent successfully!';
                 $this->showReplyModal = false;
                 $this->selectedTweet = null;
+                $this->selectedTweetId = null;
                 $this->replyContent = '';
                 $this->dispatch('reply-sent');
-                $this->dispatch('show-success', 'Reply sent successfully!');
+                $this->dispatch('show-success', $this->successMessage);
             } else {
                 $this->errorMessage = 'Failed to send reply.';
+                $this->dispatch('show-error', $this->errorMessage);
             }
         } catch (\Exception $e) {
-            $this->errorMessage = 'Error sending reply: ' . $e->getMessage();
+            Log::error('❌ Keyword reply failed', [
+                'tweet_id' => $tweetId,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->errorMessage = $e->getMessage();
+            $this->dispatch('show-error', $this->errorMessage);
         }
     }
 
@@ -1181,7 +1235,7 @@ class KeywordMonitoringComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             $response = $twitterService->likeTweet($tweetId);
             
             if ($response) {
@@ -1268,17 +1322,20 @@ class KeywordMonitoringComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             $response = $twitterService->retweet($tweetId);
             
             if ($response) {
-                // Check if it was already retweeted
-                if (isset($response->data->message) && strpos($response->data->message, 'already retweeted') !== false) {
-                    $this->successMessage = 'Tweet was already retweeted!';
-                    $this->dispatch('show-success', 'Tweet was already retweeted!');
-                } 
-                // Check if it's a rate limit message
-                elseif (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
+                if (isset($response->data->retweeted) && $response->data->retweeted === true) {
+                    $message = $response->data->message ?? 'Tweet retweeted successfully!';
+                    if (stripos($message, 'already retweeted') !== false) {
+                        $this->successMessage = 'Tweet was already retweeted!';
+                        $this->dispatch('show-success', 'Tweet was already retweeted!');
+                    } else {
+                        $this->successMessage = 'Tweet retweeted successfully!';
+                        $this->dispatch('show-success', 'Tweet retweeted successfully!');
+                    }
+                } elseif (isset($response->data->message) && strpos($response->data->message, 'Rate limit exceeded') !== false) {
                     $this->errorMessage = $response->data->message;
                     $this->dispatch('show-error', $response->data->message);
                 } else {
@@ -1287,6 +1344,11 @@ class KeywordMonitoringComponent extends Component
                 }
             }
         } catch (\Exception $e) {
+            if (stripos($e->getMessage(), 'already retweeted') !== false) {
+                $this->successMessage = 'Tweet was already retweeted!';
+                $this->dispatch('show-success', 'Tweet was already retweeted!');
+                return;
+            }
             $this->errorMessage = 'Failed to retweet: ' . $e->getMessage();
         }
     }
@@ -1295,7 +1357,9 @@ class KeywordMonitoringComponent extends Component
     {
         $this->showReplyModal = false;
         $this->selectedTweet = null;
+        $this->selectedTweetId = null;
         $this->replyContent = '';
+        $this->errorMessage = '';
     }
 
     public function refreshTweets()

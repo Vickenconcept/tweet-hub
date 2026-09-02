@@ -32,10 +32,18 @@ class WhatsAppCommandExecutor
                 'status' => $this->status($user),
                 'settings' => $this->settings($user),
                 'post' => $this->post($user, $parsed['content'] ?? ''),
+                'post_idea' => $this->postIdea($user, (int) ($parsed['index'] ?? 1)),
+                'schedule_idea' => $this->scheduleIdea($user, (int) ($parsed['index'] ?? 1), $parsed['when'] ?? ''),
+                'follow' => $this->followUser($user, $parsed['target'] ?? ''),
+                'unfollow' => $this->unfollowUserAction($user, $parsed['target'] ?? ''),
+                'retweet' => $this->retweetFromContext($user, (int) ($parsed['index'] ?? 0)),
+                'like' => $this->likeFromContext($user, (int) ($parsed['index'] ?? 0)),
+                'create_and_schedule' => $this->createAndSchedule($user, $parsed),
+                'workflow' => $this->workflow($user, $parsed),
                 'schedule' => $this->schedule($user, $parsed['when'] ?? '', $parsed['content'] ?? ''),
                 'queue' => $this->queue($user),
                 'delete_queue' => $this->deleteQueue($user, $parsed['index'] ?? 0),
-                'ideas' => $this->ideas($user),
+                'ideas' => $this->ideas($user, $parsed),
                 'generate' => $this->generate($user, $parsed['prompt'] ?? ''),
                 'draft' => $this->draft($user, $parsed['content'] ?? ''),
                 'drafts' => $this->drafts($user),
@@ -59,8 +67,6 @@ class WhatsAppCommandExecutor
                 'notify_mentions_on' => $this->toggleNotifyMentions($user, true),
                 'notify_mentions_off' => $this->toggleNotifyMentions($user, false),
                 'thread' => $this->thread($user, $parsed['parts'] ?? []),
-                'bookmark' => $this->bookmark($user, $parsed['url'] ?? ''),
-                'bookmarks' => $this->bookmarks($user),
                 'lang' => $this->setLanguage($user, $parsed['language'] ?? 'en'),
                 'start' => $this->start($user),
                 'confirm' => $this->confirm($user),
@@ -142,7 +148,7 @@ class WhatsAppCommandExecutor
                 'content' => $content,
             ], now()->addMinutes(10));
 
-            return '⚠️ *Confirm post?*'."\n\n".mb_substr($content, 0, 200)."\n\nReply *confirm* to publish, or send a new command to cancel.";
+            return '⚠️ *Confirm post?*'."\n\n".mb_substr($content, 0, 200).WhatsAppActionHints::confirm();
         }
 
         return $this->publishTweet($user, $content);
@@ -172,7 +178,7 @@ class WhatsAppCommandExecutor
 
             return '⚠️ *Confirm schedule?*'."\n\n".
                 $scheduledAt->timezone($user->preferredTimezone())->format('D M j, g:i A')."\n".
-                mb_substr($content, 0, 180)."\n\nReply *confirm* to schedule.";
+                mb_substr($content, 0, 180).WhatsAppActionHints::confirm();
         }
 
         return $this->createScheduledPost($user, $content, $scheduledAt);
@@ -189,7 +195,7 @@ class WhatsAppCommandExecutor
             ->get();
 
         if ($posts->isEmpty()) {
-            return '📋 No scheduled posts in your queue.';
+            return '📋 No scheduled posts in your queue.'.WhatsAppActionHints::emptyQueue();
         }
 
         $lines = ['📋 *Queued Posts* ('.$posts->count().')', ''];
@@ -203,9 +209,7 @@ class WhatsAppCommandExecutor
             $lines[] = '';
         }
 
-        $lines[] = 'Reply: delete queue {number}';
-
-        return implode("\n", $lines);
+        return implode("\n", $lines).WhatsAppActionHints::queueActions();
     }
 
     protected function deleteQueue(User $user, int $index): string
@@ -234,12 +238,36 @@ class WhatsAppCommandExecutor
 
         $time = $post->scheduled_at?->timezone($user->preferredTimezone())->format('D g:i A') ?? '';
 
-        return "⚠️ Delete post #{$index} scheduled {$time}?\n\"{$post->content}\"\n\nReply *confirm* to delete.";
+        return "⚠️ Delete post #{$index} scheduled {$time}?\n\"{$post->content}\"".WhatsAppActionHints::confirm();
     }
 
-    protected function ideas(User $user): string
+    protected function ideas(User $user, array $parsed = []): string
     {
         $this->requirePermission($user, 'ideas');
+
+        $cacheKey = "whatsapp_ideas_topic:{$user->id}";
+        $topic = trim((string) ($parsed['topic'] ?? ''));
+
+        if ($topic === '' && ! empty($parsed['follow_up'])) {
+            $topic = trim((string) Cache::get($cacheKey, ''));
+        }
+
+        if ($topic !== '') {
+            Cache::put($cacheKey, $topic, now()->addHours(24));
+
+            $prompt = "Generate 3 complete, ready-to-post tweets focused on: {$topic}. "
+                .'The user explicitly asked for ideas about this topic in WhatsApp — stay on this theme only. '
+                .'Each under 279 characters. Number them 1-3. No extra commentary.';
+
+            $response = $this->chatGptService->generateContent($prompt);
+            if (! $response) {
+                throw new \RuntimeException('Could not generate ideas. Try again later.');
+            }
+
+            WhatsAppSessionContext::for($user)->storeIdeas($response);
+
+            return "💡 *Post Ideas* ({$topic})\n\n".$response.WhatsAppActionHints::afterIdeas();
+        }
 
         $topic = $user->getDefaultTopic();
         $niche = $user->getDefaultNiche();
@@ -252,7 +280,9 @@ class WhatsAppCommandExecutor
             throw new \RuntimeException('Could not generate ideas. Try again later.');
         }
 
-        return "💡 *Daily Ideas* ({$topic} / {$niche})\n\n".$response."\n\nReply: post: {paste idea}";
+        WhatsAppSessionContext::for($user)->storeIdeas($response);
+
+        return "💡 *Daily Ideas* ({$topic} / {$niche})\n\n".$response.WhatsAppActionHints::afterIdeas();
     }
 
     protected function generate(User $user, string $prompt): string
@@ -272,7 +302,227 @@ class WhatsAppCommandExecutor
             throw new \RuntimeException('Could not generate ideas. Try again later.');
         }
 
-        return "💡 *Generated Ideas*\n\n".$response;
+        WhatsAppSessionContext::for($user)->storeIdeas($response);
+
+        return "💡 *Generated Ideas*\n\n".$response.WhatsAppActionHints::afterIdeas();
+    }
+
+    protected function postIdea(User $user, int $index): string
+    {
+        $this->requirePermission($user, 'post');
+
+        $idea = WhatsAppSessionContext::for($user)->getIdea($index);
+        if ($idea === null) {
+            throw new \RuntimeException(
+                "I don't have idea #{$index} saved. Ask for ideas first, then say *post idea {$index}* or *post the first idea*."
+            );
+        }
+
+        return $this->post($user, $idea);
+    }
+
+    protected function scheduleIdea(User $user, int $index, string $when): string
+    {
+        $this->requirePermission($user, 'schedule');
+
+        $idea = WhatsAppSessionContext::for($user)->getIdea($index);
+        if ($idea === null) {
+            throw new \RuntimeException(
+                "No idea #{$index} saved. Ask for ideas first, then *schedule idea {$index} at 10pm*."
+            );
+        }
+
+        $when = trim($when);
+        if ($when === '') {
+            throw new \RuntimeException('Include a time, e.g. *schedule idea 1 at 10pm*');
+        }
+
+        return $this->schedule($user, $when, $idea);
+    }
+
+    protected function followUser(User $user, string $target): string
+    {
+        $this->requirePermission($user, 'follow');
+        $this->requireTwitter($user);
+
+        $target = trim($target);
+        if ($target === '') {
+            throw new \RuntimeException('Use: follow @handle');
+        }
+
+        $result = $this->engagement->followTarget($user, $target);
+
+        if ($result['pending']) {
+            return "✅ Follow request sent to {$result['label']} (pending approval).";
+        }
+
+        return "✅ You are now following {$result['label']}.";
+    }
+
+    protected function unfollowUserAction(User $user, string $target): string
+    {
+        $this->requirePermission($user, 'follow');
+        $this->requireTwitter($user);
+
+        $target = trim($target);
+        if ($target === '') {
+            throw new \RuntimeException('Use: unfollow @handle');
+        }
+
+        $result = $this->engagement->unfollowTarget($user, $target);
+
+        return "✅ Unfollowed {$result['label']}.";
+    }
+
+    protected function retweetFromContext(User $user, int $index): string
+    {
+        $this->requirePermission($user, 'reply');
+        $this->requireTwitter($user);
+
+        $tweet = $this->tweetFromContext($user, $index);
+        $this->engagement->retweet($user, $tweet['id']);
+
+        return "✅ Retweeted @{$tweet['author']}.";
+    }
+
+    protected function likeFromContext(User $user, int $index): string
+    {
+        $this->requirePermission($user, 'reply');
+        $this->requireTwitter($user);
+
+        $tweet = $this->tweetFromContext($user, $index);
+        $this->engagement->like($user, $tweet['id']);
+
+        return "✅ Liked @{$tweet['author']}'s tweet.";
+    }
+
+    protected function tweetFromContext(User $user, int $index): array
+    {
+        if ($index < 1) {
+            throw new \RuntimeException('Use a number from your last *mentions* or *search* list.');
+        }
+
+        $context = Cache::get($this->contextKey($user, 'mentions'))
+            ?? Cache::get($this->contextKey($user, 'search'));
+
+        if (empty($context)) {
+            throw new \RuntimeException('Send *mentions* or *search: …* first.');
+        }
+
+        $tweet = $context[$index - 1] ?? null;
+        if (! $tweet) {
+            throw new \RuntimeException("No tweet #{$index} in context.");
+        }
+
+        return $tweet;
+    }
+
+    protected function createAndSchedule(User $user, array $parsed): string
+    {
+        $this->requirePermission($user, 'schedule');
+        $this->requireTwitter($user);
+
+        $topic = trim((string) ($parsed['topic'] ?? ''));
+        $when = trim((string) ($parsed['when'] ?? ''));
+
+        if ($topic === '' || $when === '') {
+            throw new \RuntimeException('Tell me the topic and time, e.g. *create a post about AI coding then schedule it at 10pm*');
+        }
+
+        $content = $this->composeTweetAbout($topic);
+        $result = $this->schedule($user, $when, $content);
+
+        return "✍️ Composed about *{$topic}*:\n\"{$content}\"\n\n".$result;
+    }
+
+    protected function workflow(User $user, array $parsed): string
+    {
+        $steps = $parsed['steps'] ?? [];
+        if ($steps === []) {
+            throw new \RuntimeException('I understood multiple steps but could not parse them. Try again with clearer wording.');
+        }
+
+        $composedContent = null;
+        $lastResponse = '';
+
+        foreach ($steps as $step) {
+            if (! is_array($step)) {
+                continue;
+            }
+
+            $stepAction = $step['action'] ?? '';
+
+            if (in_array($stepAction, ['compose', 'generate_post', 'create', 'write'], true)) {
+                $topic = trim((string) ($step['topic'] ?? $step['prompt'] ?? $step['subject'] ?? ''));
+                if ($topic === '') {
+                    continue;
+                }
+                $composedContent = $this->composeTweetAbout($topic);
+                $lastResponse = "✍️ Draft ready:\n\"{$composedContent}\"";
+
+                continue;
+            }
+
+            if ($stepAction === 'schedule') {
+                $when = trim((string) ($step['when'] ?? $step['time'] ?? ''));
+                $content = trim((string) ($step['content'] ?? $composedContent ?? ''));
+                if ($when === '' || $content === '') {
+                    throw new \RuntimeException('Schedule step needs a time and tweet content.');
+                }
+
+                return $this->schedule($user, $when, $content);
+            }
+
+            if (in_array($stepAction, ['post', 'publish'], true)) {
+                $content = trim((string) ($step['content'] ?? $composedContent ?? ''));
+                if ($content === '') {
+                    throw new \RuntimeException('Post step needs tweet content.');
+                }
+
+                return $this->post($user, $content);
+            }
+
+            if ($stepAction === 'ideas') {
+                $lastResponse = $this->ideas($user, ['topic' => $step['topic'] ?? '']);
+
+                continue;
+            }
+        }
+
+        if ($composedContent !== null && $lastResponse !== '') {
+            Cache::put($this->pendingKey($user), [
+                'action' => 'post',
+                'content' => $composedContent,
+            ], now()->addMinutes(10));
+
+            return $lastResponse;
+        }
+
+        throw new \RuntimeException('I parsed your request but could not finish all steps. Try splitting into two messages.');
+    }
+
+    protected function composeTweetAbout(string $topic): string
+    {
+        $topic = trim($topic);
+        if ($topic === '') {
+            throw new \RuntimeException('Tell me what the post should be about.');
+        }
+
+        $prompt = "Write one complete, ready-to-post tweet (max 279 characters) about: {$topic}. "
+            .'Return ONLY the tweet text — no quotes, numbering, labels, or commentary.';
+
+        $response = trim((string) $this->chatGptService->generateContent($prompt));
+        if ($response === '') {
+            throw new \RuntimeException('Could not compose the post. Try again.');
+        }
+
+        $response = trim($response, "\"'");
+
+        if (mb_strlen($response) > 279) {
+            $response = mb_substr($response, 0, 279);
+        }
+
+        return $response;
     }
 
     protected function draft(User $user, string $content): string
@@ -290,7 +540,7 @@ class WhatsAppCommandExecutor
             'status' => 'draft',
         ]);
 
-        return '✅ Draft saved ('.mb_strlen($content).' chars). Send *drafts* to list them.';
+        return '✅ Draft saved ('.mb_strlen($content).' chars).';
     }
 
     protected function drafts(User $user): string
@@ -304,7 +554,7 @@ class WhatsAppCommandExecutor
             ->get();
 
         if ($drafts->isEmpty()) {
-            return '📝 No drafts. Use: draft: your text';
+            return '📝 No drafts.';
         }
 
         $lines = ['📝 *Drafts*', ''];
@@ -383,9 +633,9 @@ class WhatsAppCommandExecutor
             $lines[] = '';
         }
 
-        $lines[] = 'Reply: reply {number}: your text';
+        $lines[] = '';
 
-        return implode("\n", $lines);
+        return implode("\n", $lines).WhatsAppActionHints::engageFromList();
     }
 
     protected function reply(User $user, int $index, string $content): string
@@ -422,7 +672,7 @@ class WhatsAppCommandExecutor
                 'preview' => mb_substr($tweet['text'], 0, 80),
             ], now()->addMinutes(10));
 
-            return "⚠️ *Confirm reply* to @{$tweet['author']}?\n\nYour reply:\n\"{$content}\"\n\nReply *confirm* to send.";
+            return "⚠️ *Confirm reply* to @{$tweet['author']}?\n\nYour reply:\n\"{$content}\"".WhatsAppActionHints::confirm();
         }
 
         return $this->performReply($user, $tweet['id'], $content);
@@ -446,7 +696,7 @@ class WhatsAppCommandExecutor
         $keywords = $this->engagement->getKeywords($user);
 
         if (empty($keywords)) {
-            return "🔑 No keywords monitored.\n\nAdd one: add keyword: yourbrand";
+            return '🔑 No keywords monitored.';
         }
 
         $lines = ['🔑 *Monitored Keywords*', ''];
@@ -454,10 +704,8 @@ class WhatsAppCommandExecutor
             $lines[] = ($index + 1).'. '.$keyword;
         }
         $lines[] = '';
-        $lines[] = 'Add: add keyword: word';
-        $lines[] = 'Remove: remove keyword: word';
 
-        return implode("\n", $lines);
+        return implode("\n", $lines).WhatsAppActionHints::keywordActions();
     }
 
     protected function addKeyword(User $user, string $keyword): string
@@ -515,9 +763,9 @@ class WhatsAppCommandExecutor
             $lines[] = '';
         }
 
-        $lines[] = 'Reply: reply {number}: your text';
+        $lines[] = '';
 
-        return implode("\n", $lines);
+        return implode("\n", $lines).WhatsAppActionHints::engageFromList();
     }
 
     protected function analytics(User $user, string $tweetId): string
@@ -592,9 +840,7 @@ class WhatsAppCommandExecutor
             $lines[] = '';
         }
 
-        $lines[] = 'Toggle: auto posts {number} on/off';
-
-        return implode("\n", $lines);
+        return implode("\n", $lines).WhatsAppActionHints::autoPostsActions();
     }
 
     protected function toggleAutoPosts(User $user, int $index, bool $enabled): string
@@ -627,10 +873,9 @@ class WhatsAppCommandExecutor
             '🎨 *Image generated*',
             '',
             'Asset code: '.$result['code'],
-            'Use in tweet: [img:'.$result['code'].']',
             '',
             $result['url'],
-        ]);
+        ]).WhatsAppActionHints::imageActions($result['code']);
     }
 
     protected function assets(User $user): string
@@ -640,7 +885,7 @@ class WhatsAppCommandExecutor
         $assets = $this->media->recentAssets($user);
 
         if (empty($assets)) {
-            return '🖼 No assets yet. Generate one: image: your description';
+            return '🖼 No assets yet.';
         }
 
         $lines = ['🖼 *Recent Assets*', ''];
@@ -649,10 +894,7 @@ class WhatsAppCommandExecutor
             $lines[] = ($index + 1).'. `'.$asset['code'].'` — '.$asset['name'];
         }
 
-        $lines[] = '';
-        $lines[] = 'Use in tweet: post: Hello [img:code]';
-
-        return implode("\n", $lines);
+        return implode("\n", $lines).WhatsAppActionHints::assetActions();
     }
 
     protected function toggleNotifyPosts(User $user, bool $enabled): string
@@ -750,10 +992,7 @@ class WhatsAppCommandExecutor
             $lines[] = '✅ X connected · Remote: '.($user->whatsapp_bot_enabled ? 'ON' : 'OFF');
         }
 
-        $lines[] = '';
-        $lines[] = 'Try: *show my mentions* · *post: Hello world!* · *status* · *help*';
-
-        return implode("\n", $lines);
+        return implode("\n", $lines).WhatsAppActionHints::startMenu();
     }
 
     protected function setLanguage(User $user, string $language): string
@@ -775,11 +1014,11 @@ class WhatsAppCommandExecutor
 
         $parts = array_values(array_filter(array_map('trim', $parts)));
         if (count($parts) < 2) {
-            throw new \RuntimeException('Use: thread: part 1 | part 2 | part 3 (min 2 parts, separate with |)');
+            throw new \RuntimeException('Use: thread: part 1 | part 2 (min 2 parts, separate with |)');
         }
 
-        if (count($parts) > 10) {
-            throw new \RuntimeException('Maximum 10 thread parts.');
+        if (count($parts) > TwitterService::MAX_THREAD_PARTS) {
+            throw new \RuntimeException('Maximum '.TwitterService::MAX_THREAD_PARTS.' thread parts.');
         }
 
         if (! $user->whatsapp_quick_mode) {
@@ -790,7 +1029,7 @@ class WhatsAppCommandExecutor
 
             $preview = implode("\n→ ", array_map(fn ($p) => mb_substr($p, 0, 60), array_slice($parts, 0, 3)));
 
-            return "⚠️ *Confirm thread?* (".count($parts)." parts)\n\n→ {$preview}\n\nReply *confirm* to publish.";
+            return "⚠️ *Confirm thread?* (".count($parts)." parts)\n\n→ {$preview}".WhatsAppActionHints::confirm();
         }
 
         return $this->performThread($user, $parts);
@@ -811,54 +1050,6 @@ class WhatsAppCommandExecutor
         return $message;
     }
 
-    protected function bookmarks(User $user): string
-    {
-        $this->requirePermission($user, 'bookmarks');
-        $this->requireTwitter($user);
-
-        try {
-            $bookmarks = $this->engagement->fetchBookmarks($user);
-        } catch (\Throwable $e) {
-            Log::warning('WhatsApp bookmarks list failed', ['error' => $e->getMessage()]);
-
-            throw new \RuntimeException('Could not load bookmarks right now. Try again from the app.');
-        }
-
-        if (empty($bookmarks)) {
-            return '🔖 No bookmarks found.';
-        }
-
-        $lines = ['🔖 *Bookmarks*', ''];
-        foreach ($bookmarks as $index => $bookmark) {
-            $lines[] = ($index + 1).'. '.mb_substr($bookmark['text'], 0, 80);
-            $lines[] = '   '.$bookmark['url'];
-        }
-
-        return implode("\n", $lines);
-    }
-
-    protected function bookmark(User $user, string $url): string
-    {
-        $this->requirePermission($user, 'bookmarks');
-        $this->requireTwitter($user);
-
-        $tweetId = $this->engagement->extractTweetIdFromUrl($url);
-        if (! $tweetId) {
-            throw new \RuntimeException('Use: bookmark: https://x.com/user/status/123...');
-        }
-
-        try {
-            $twitter = $this->twitterService($user);
-            $twitter->addBookmark($tweetId);
-        } catch (\Throwable $e) {
-            Log::warning('WhatsApp bookmark add failed', ['error' => $e->getMessage()]);
-
-            throw new \RuntimeException('Could not bookmark that tweet. This may not be available on your X API plan.');
-        }
-
-        return "✅ Bookmarked tweet {$tweetId}";
-    }
-
     protected function chat(User $user, string $type): string
     {
         $firstName = trim(explode(' ', $user->name ?? '')[0] ?: 'there');
@@ -868,18 +1059,16 @@ class WhatsAppCommandExecutor
                 "👋 Hey {$firstName}! I'm *XEngager* — your X assistant on WhatsApp.",
                 '',
                 'I can help you post tweets, check mentions, view your queue, and more.',
-                '',
-                'Try: *show my mentions* · *show my queue* · *help*',
-            ]),
+            ]).WhatsAppActionHints::greetingMenu(),
             'identity' => implode("\n", [
                 "I'm *XEngager* — your WhatsApp remote for X (Twitter). 🤖",
                 '',
-                'Tell me what you need in plain English, for example:',
-                '• *Post: Hello world!*',
-                '• *Show my mentions*',
-                '• *Give me post ideas*',
-                '',
-                'Send *help* to see everything I can do.',
+                'Tell me what you need in plain English:',
+            ]).WhatsAppActionHints::actions('➡️ *Examples:*', [
+                ['icon' => '✍️', 'cmd' => 'post: Hello world!'],
+                ['icon' => '📬', 'cmd' => 'show my mentions'],
+                ['icon' => '💡', 'cmd' => 'give me post ideas'],
+                ['icon' => '❓', 'cmd' => 'help'],
             ]),
             'thanks' => "You're welcome, {$firstName}! 🙂 Message me anytime — or send *help* if you need ideas.",
             'goodbye' => "Talk soon, {$firstName}! 👋 I'm here whenever you need to manage X from WhatsApp.",
@@ -889,17 +1078,7 @@ class WhatsAppCommandExecutor
 
     protected function friendlyFallback(): string
     {
-        return implode("\n", [
-            "I'm *XEngager* — I help you manage X from WhatsApp.",
-            '',
-            'Here are things you can say right now:',
-            '• *Show my queue*',
-            '• *Show my mentions*',
-            '• *Post: your tweet here*',
-            '• *Status*',
-            '',
-            'Send *help* for the full guide.',
-        ]);
+        return WhatsAppActionHints::didntUnderstand();
     }
 
     protected function unknown(?string $raw): string
@@ -954,6 +1133,25 @@ class WhatsAppCommandExecutor
     {
         $tz = $user->preferredTimezone();
         $when = trim(strtolower($when));
+        $when = str_replace('.', ':', $when);
+
+        if (preg_match('/^(\d{1,2}):(\d{2})\s*(am|pm)$/', $when, $m)) {
+            $hour = (int) $m[1];
+            $minute = (int) $m[2];
+            if ($m[3] === 'pm' && $hour < 12) {
+                $hour += 12;
+            }
+            if ($m[3] === 'am' && $hour === 12) {
+                $hour = 0;
+            }
+
+            $scheduled = now($tz)->setTime($hour, $minute);
+            if ($scheduled->lessThanOrEqualTo(now($tz))) {
+                $scheduled = $scheduled->addDay();
+            }
+
+            return $scheduled->timezone(config('app.timezone'));
+        }
 
         if (preg_match('/^tomorrow(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/', $when, $m)) {
             $hour = (int) $m[1];
@@ -986,14 +1184,7 @@ class WhatsAppCommandExecutor
 
     protected function twitterService(User $user): TwitterService
     {
-        return new TwitterService([
-            'account_id' => $user->twitter_account_id,
-            'access_token' => $user->twitter_access_token,
-            'access_token_secret' => $user->twitter_access_token_secret,
-            'consumer_key' => config('services.twitter.api_key'),
-            'consumer_secret' => config('services.twitter.api_key_secret'),
-            'bearer_token' => config('services.twitter.bearer_token'),
-        ]);
+        return new TwitterService($user);
     }
 
     protected function requireTwitter(User $user): void

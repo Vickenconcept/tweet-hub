@@ -45,10 +45,7 @@ class TwitterAccount extends Model
      */
     public function isConfigured(): bool
     {
-        return !empty($this->api_key) &&
-               !empty($this->api_secret) &&
-               !empty($this->access_token) &&
-               !empty($this->access_token_secret);
+        return $this->user?->isTwitterConnected() ?? false;
     }
 
     /**
@@ -237,13 +234,10 @@ class TwitterAccount extends Model
      */
     public function getTwitterServiceSettings(): array
     {
-        return [
-            'account_id' => $this->user->twitter_account_id ?? null,
-            'consumer_key' => $this->getDecryptedApiKey(),
-            'consumer_secret' => $this->getDecryptedApiSecret(),
-            'access_token' => $this->getDecryptedAccessToken(),
-            'access_token_secret' => $this->getDecryptedAccessTokenSecret(),
-            'bearer_token' => $this->getDecryptedApiKey(), // For v2 API endpoints, bearer token is typically the API key
+        return $this->user?->getTwitterServiceSettings() ?? [
+            'zernio_account_id' => null,
+            'zernio_profile_id' => null,
+            'account_id' => null,
         ];
     }
 }

@@ -149,7 +149,6 @@
                             'assets' => 'View assets',
                             'notifications' => 'Alert toggles',
                             'thread' => 'Post threads',
-                            'bookmarks' => 'Bookmarks',
                         ] as $key => $label)
                             <label class="flex items-center gap-2 text-sm text-gray-700">
                                 <input type="checkbox" wire:model="permissions.{{ $key }}" class="rounded border-gray-300 text-green-600 focus:ring-green-500">
@@ -193,8 +192,6 @@
             <div>assets</div>
             <div>notify posts on</div>
             <div>thread: part 1 | part 2</div>
-            <div>bookmark: tweet url</div>
-            <div>bookmarks</div>
             <div>lang es</div>
             <div>start</div>
             <div>notify mentions on</div>

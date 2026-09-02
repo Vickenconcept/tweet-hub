@@ -26,7 +26,7 @@ class ProcessInteractionAutoDms extends Command
         $users = User::where('interaction_auto_dm_enabled', true)
             ->where('twitter_account_connected', true)
             ->whereNotNull('twitter_account_id')
-            ->whereNotNull('twitter_access_token')
+            ->whereNotNull('zernio_twitter_account_id')
             ->get();
 
         if ($users->isEmpty()) {
@@ -65,35 +65,19 @@ class ProcessInteractionAutoDms extends Command
 
             try {
                 // Validate that we have all required tokens
-                if (empty($user->twitter_access_token) || empty($user->twitter_access_token_secret)) {
-                    Log::error('📩 Missing Twitter access tokens for user', [
+                if (! $user->isTwitterConnected()) {
+                    Log::error('📩 Missing Zernio X connection for user', [
                         'user_id' => $user->id,
-                        'has_access_token' => !empty($user->twitter_access_token),
-                        'has_access_token_secret' => !empty($user->twitter_access_token_secret),
                     ]);
                     continue;
                 }
 
-                $settings = [
-                    'account_id' => $user->twitter_account_id,
-                    'consumer_key' => config('services.twitter.api_key'),
-                    'consumer_secret' => config('services.twitter.api_key_secret'),
-                    'access_token' => $user->twitter_access_token,
-                    'access_token_secret' => $user->twitter_access_token_secret,
-                    'bearer_token' => config('services.twitter.bearer_token'),
-                ];
-
-                // Log authentication settings (without sensitive data)
                 Log::info('📩 Initializing TwitterService for interaction processing', [
                     'user_id' => $user->id,
-                    'account_id' => $user->twitter_account_id,
-                    'has_access_token' => !empty($settings['access_token']),
-                    'has_access_token_secret' => !empty($settings['access_token_secret']),
-                    'has_consumer_key' => !empty($settings['consumer_key']),
-                    'has_bearer_token' => !empty($settings['bearer_token']),
+                    'zernio_account_id' => $user->zernio_twitter_account_id,
                 ]);
 
-                $twitter = new TwitterService($settings);
+                $twitter = new TwitterService($user);
                 
                 // Get number of tweets to check (default 5 to avoid rate limits)
                 $tweetsToCheck = (int) $this->option('tweets');

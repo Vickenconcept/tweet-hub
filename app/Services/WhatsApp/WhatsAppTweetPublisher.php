@@ -54,60 +54,61 @@ class WhatsAppTweetPublisher
     public function publishThread(User $user, array $parts): array
     {
         $twitter = $this->twitterService($user);
-        $prevTweetId = null;
-        $prevLocalPostId = null;
-        $firstUrl = null;
-        $firstTweetId = null;
-        $published = 0;
+        $preparedTexts = [];
+        $mediaByPart = [];
+        $mediaCodesByPart = [];
 
-        foreach ($parts as $part) {
+        foreach (array_values($parts) as $index => $part) {
             $part = trim($part);
             if ($part === '') {
                 continue;
             }
 
             [$text, $mediaIds, $mediaCodes] = $this->prepareContent($user, $part, $twitter);
-
-            $response = $prevTweetId
-                ? $twitter->createTweet($text, $mediaIds, $prevTweetId)
-                : $twitter->createTweet($text, $mediaIds);
-
-            $tweetId = $response->data->id ?? null;
-            if (! $tweetId) {
-                throw new \RuntimeException('Thread failed part '.($published + 1));
+            $preparedTexts[] = $text;
+            $partIndex = count($preparedTexts) - 1;
+            if (! empty($mediaIds)) {
+                $mediaByPart[$partIndex] = $mediaIds;
             }
+            if (! empty($mediaCodes)) {
+                $mediaCodesByPart[$partIndex] = $mediaCodes;
+            }
+        }
 
+        if ($preparedTexts === []) {
+            throw new \RuntimeException('Thread has no content.');
+        }
+
+        $response = count($preparedTexts) > 1
+            ? $twitter->createThread($preparedTexts, $mediaByPart)
+            : $twitter->createTweet($preparedTexts[0], $mediaByPart[0] ?? []);
+
+        $tweetIds = $response->data->tweet_ids ?? [$response->data->id ?? null];
+        $firstTweetId = $tweetIds[0] ?? null;
+        $prevLocalPostId = null;
+
+        foreach ($preparedTexts as $index => $text) {
             $post = Post::create([
                 'user_id' => $user->id,
                 'content' => $text,
-                'media' => $mediaCodes ?: null,
-                'twitter_post_id' => $tweetId,
-                'in_reply_to_post_id' => $prevLocalPostId,
+                'media' => $mediaCodesByPart[$index] ?? null,
+                'twitter_post_id' => $tweetIds[$index] ?? $firstTweetId,
+                'in_reply_to_post_id' => $index > 0 ? $prevLocalPostId : null,
                 'status' => 'sent',
                 'sent_at' => now(),
             ]);
-
-            if (! $firstTweetId) {
-                $firstTweetId = $tweetId;
-                $firstUrl = $user->twitter_username
-                    ? "https://x.com/{$user->twitter_username}/status/{$tweetId}"
-                    : null;
-            }
-
-            $prevTweetId = $tweetId;
             $prevLocalPostId = $post->id;
-            $published++;
         }
 
-        if ($published === 0) {
-            throw new \RuntimeException('Thread has no content.');
-        }
+        $firstUrl = $firstTweetId && $user->twitter_username
+            ? "https://x.com/{$user->twitter_username}/status/{$firstTweetId}"
+            : null;
 
         return [
             'tweet_id' => $firstTweetId,
             'url' => $firstUrl,
-            'content' => $parts[0] ?? '',
-            'parts' => $published,
+            'content' => $preparedTexts[0],
+            'parts' => count($preparedTexts),
         ];
     }
 
@@ -213,13 +214,6 @@ class WhatsAppTweetPublisher
 
     protected function twitterService(User $user): TwitterService
     {
-        return new TwitterService([
-            'account_id' => $user->twitter_account_id,
-            'access_token' => $user->twitter_access_token,
-            'access_token_secret' => $user->twitter_access_token_secret,
-            'consumer_key' => config('services.twitter.api_key'),
-            'consumer_secret' => config('services.twitter.api_key_secret'),
-            'bearer_token' => config('services.twitter.bearer_token'),
-        ]);
+        return TwitterService::forUser($user);
     }
 }

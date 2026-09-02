@@ -61,34 +61,6 @@ class WhatsAppEngagementService
         return $this->normalizeTweets($tweets, $users);
     }
 
-    public function fetchBookmarks(User $user, int $limit = 5): array
-    {
-        $twitter = $this->twitterService($user);
-        $response = $twitter->getBookmarks($user->twitter_account_id);
-
-        $tweets = [];
-        if (is_object($response) && isset($response->data)) {
-            $tweets = (array) $response->data;
-        } elseif (is_array($response) && isset($response['data'])) {
-            $tweets = $response['data'];
-        }
-
-        $normalized = [];
-        foreach (array_slice($tweets, 0, $limit) as $tweet) {
-            $id = is_object($tweet) ? ($tweet->id ?? null) : ($tweet['id'] ?? null);
-            $text = is_object($tweet) ? ($tweet->text ?? '') : ($tweet['text'] ?? '');
-            if ($id) {
-                $normalized[] = [
-                    'id' => (string) $id,
-                    'text' => $text,
-                    'url' => "https://x.com/i/web/status/{$id}",
-                ];
-            }
-        }
-
-        return $normalized;
-    }
-
     public function extractTweetIdFromUrl(string $url): ?string
     {
         if (preg_match('/(?:twitter|x)\.com\/\w+\/status\/(\d+)/i', $url, $matches)) {
@@ -103,6 +75,46 @@ class WhatsAppEngagementService
         $twitter = $this->twitterService($user);
 
         return $twitter->createTweet($text, [], $tweetId);
+    }
+
+    public function retweet(User $user, string $tweetId): void
+    {
+        $this->twitterService($user)->retweet($tweetId);
+    }
+
+    public function like(User $user, string $tweetId): void
+    {
+        $this->twitterService($user)->likeTweet($tweetId);
+    }
+
+    /**
+     * @return array{label: string, following: bool, pending: bool}
+     */
+    public function followTarget(User $user, string $target): array
+    {
+        $twitter = $this->twitterService($user);
+        $userId = $twitter->resolveTwitterUserId($target);
+        $result = $twitter->followUser($userId);
+        $label = str_starts_with($target, '@') ? $target : '@'.ltrim($target, '@');
+
+        return [
+            'label' => $label,
+            'following' => (bool) ($result->data->following ?? true),
+            'pending' => (bool) ($result->data->pending_follow ?? false),
+        ];
+    }
+
+    /**
+     * @return array{label: string}
+     */
+    public function unfollowTarget(User $user, string $target): array
+    {
+        $twitter = $this->twitterService($user);
+        $userId = $twitter->resolveTwitterUserId($target);
+        $twitter->unfollowUser($userId);
+        $label = str_starts_with($target, '@') ? $target : '@'.ltrim($target, '@');
+
+        return ['label' => $label];
     }
 
     public function getKeywords(User $user): array
@@ -214,13 +226,6 @@ class WhatsAppEngagementService
 
     protected function twitterService(User $user): TwitterService
     {
-        return new TwitterService([
-            'account_id' => $user->twitter_account_id,
-            'access_token' => $user->twitter_access_token,
-            'access_token_secret' => $user->twitter_access_token_secret,
-            'consumer_key' => config('services.twitter.api_key'),
-            'consumer_secret' => config('services.twitter.api_key_secret'),
-            'bearer_token' => config('services.twitter.bearer_token'),
-        ]);
+        return TwitterService::forUser($user);
     }
 }

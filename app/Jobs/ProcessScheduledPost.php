@@ -58,27 +58,7 @@ class ProcessScheduledPost implements ShouldQueue
                 'twitter_account_id' => $user->twitter_account_id,
             ]);
 
-            $settings = [
-                'account_id' => $user->twitter_account_id,
-                'access_token' => $user->twitter_access_token,
-                'access_token_secret' => $user->twitter_access_token_secret,
-                'consumer_key' => config('services.twitter.api_key'),
-                'consumer_secret' => config('services.twitter.api_key_secret'),
-                'bearer_token' => config('services.twitter.bearer_token'),
-            ];
-
-            // Log Twitter service settings
-            Log::info('Twitter service settings', [
-                'user_id' => $user->id,
-                'account_id' => $settings['account_id'],
-                'access_token' => $settings['access_token'] ? 'SET' : 'NOT_SET',
-                'access_token_secret' => $settings['access_token_secret'] ? 'SET' : 'NOT_SET',
-                'consumer_key' => $settings['consumer_key'] ? 'SET' : 'NOT_SET',
-                'consumer_secret' => $settings['consumer_secret'] ? 'SET' : 'NOT_SET',
-                'bearer_token' => $settings['bearer_token'] ? 'SET' : 'NOT_SET',
-            ]);
-
-            $twitter = new TwitterService($settings);
+            $twitter = new TwitterService($user);
             $mediaIds = [];
 
             // Process media if any

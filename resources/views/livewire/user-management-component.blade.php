@@ -1,112 +1,31 @@
-<!-- User Management Component -->
 <div class="p-6 bg-white rounded-lg shadow-md">
-    <!-- Header -->
     <div class="mb-6">
         <div class="flex items-center justify-between mb-2">
-            <h2 class="text-2xl font-bold text-gray-900">Twitter Analytics</h2>
-            <div class="flex space-x-2">
-                <button wire:click="refreshData" 
-                        wire:loading.attr="disabled"
-                        @if($isRateLimited) disabled style="pointer-events: none;" onclick="return false;" @endif
-                        class="px-4 py-2 text-sm font-medium rounded-lg transition-colors
-                               @if($isRateLimited)
-                                   text-gray-400 bg-gray-100 cursor-not-allowed opacity-50
-                               @else
-                                   text-white bg-blue-600 hover:bg-blue-700
-                               @endif">
-                    <i class="bx bx-sync mr-2"></i>
-                    <span wire:loading.remove wire:target="refreshData">
-                        @if($isRateLimited)
-                            Rate Limited
-                        @else
-                            Sync Fresh Data
-                        @endif
-                    </span>
-                    <span wire:loading wire:target="refreshData">Syncing...</span>
-                </button>
-            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Follower Insights</h2>
+            <button wire:click="refreshData"
+                    wire:loading.attr="disabled"
+                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
+                <i class="bx bx-sync mr-2"></i>
+                <span wire:loading.remove wire:target="refreshData">Refresh</span>
+                <span wire:loading wire:target="refreshData">Syncing...</span>
+            </button>
         </div>
         <p class="text-gray-500 text-sm">
-            @if($isRateLimited)
-                <i class="bx bx-error-circle mr-1 text-orange-600"></i>
-                Rate Limited - Wait {{ $rateLimitWaitMinutes }} min(s) | Resets: {{ $rateLimitResetTime }}
-            @elseif($lastRefresh)
+            @if($lastRefresh)
                 <i class="bx bx-check-circle mr-1 text-green-600"></i>
                 Last updated: {{ $lastRefresh }}
             @else
                 <i class="bx bx-info-circle mr-1 text-blue-600"></i>
-                Analyze your Twitter followers and following
+                Follower growth and follow/unfollow actions
             @endif
         </p>
     </div>
 
-    <!-- Info Box -->
-    <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div class="flex items-start">
-            <i class="bx bx-info-circle text-blue-500 mr-2 mt-0.5"></i>
-            <div class="text-sm text-blue-700">
-                <p class="font-medium mb-1">Twitter Analytics & User Management</p>
-                <p>Analyze your followers, following, and discover mutual connections. Use advanced filters to find specific users and export data.</p>
-                <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                    <div><strong>Mutual:</strong> Users who follow you and you follow back</div>
-                    <div><strong>Not Following Back:</strong> You follow them, they don't follow you</div>
-                    <div><strong>Not Following:</strong> They follow you, you don't follow them</div>
-                    <div><strong>Advanced Search:</strong> Filter by bio, followers count, verification, location</div>
-                </div>
-                <p class="mt-2 text-xs text-blue-600"><strong>Note:</strong> Some features require Elevated Access to Twitter API v2. Data is cached for 4 hours to avoid rate limits.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Basic User Info Display -->
-    @if($basicUserInfo)
-        <div class="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div class="flex items-start">
-                <i class="bx bx-user-check text-green-500 mr-2 mt-0.5"></i>
-                <div class="text-sm text-green-700">
-                    <p class="font-medium mb-2">Your Twitter Profile</p>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <span class="font-medium">Name:</span> {{ $basicUserInfo->name }}
-                        </div>
-                        <div>
-                            <span class="font-medium">Username:</span> @{{ $basicUserInfo->username }}
-                        </div>
-                        @if(isset($basicUserInfo->description))
-                            <div class="col-span-2">
-                                <span class="font-medium">Bio:</span> {{ $basicUserInfo->description }}
-                            </div>
-                        @endif
-                        @if(isset($basicUserInfo->location))
-                            <div>
-                                <span class="font-medium">Location:</span> {{ $basicUserInfo->location }}
-                            </div>
-                        @endif
-                        @if(isset($basicUserInfo->created_at))
-                            <div>
-                                <span class="font-medium">Joined:</span> {{ \Carbon\Carbon::parse($basicUserInfo->created_at)->format('M Y') }}
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
-        </div>
-    @endif
-
-    <!-- Messages -->
     @if($errorMessage)
         <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <div class="flex items-start">
                 <i class="bx bx-error-circle text-red-500 mr-2"></i>
-                <div class="flex-1">
-                    <p class="text-red-700">{{ $errorMessage }}</p>
-                    @if(str_contains($errorMessage, 'Rate limit'))
-                        <p class="text-sm mt-2 text-red-600">
-                            <i class="bx bx-info-circle mr-1"></i>
-                            Twitter API has rate limits to prevent abuse. Try again in a few minutes.
-                        </p>
-                    @endif
-                </div>
+                <p class="text-red-700 flex-1">{{ $errorMessage }}</p>
                 <button wire:click="clearMessages" class="ml-auto text-red-400 hover:text-red-600">
                     <i class="bx bx-x"></i>
                 </button>
@@ -118,7 +37,7 @@
         <div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div class="flex items-center">
                 <i class="bx bx-check-circle text-green-500 mr-2"></i>
-                <span class="text-green-700">{{ $successMessage }}</span>
+                <span class="text-green-700 flex-1">{{ $successMessage }}</span>
                 <button wire:click="clearMessages" class="ml-auto text-green-400 hover:text-green-600">
                     <i class="bx bx-x"></i>
                 </button>
@@ -126,345 +45,176 @@
         </div>
     @endif
 
-    <!-- Advanced Search Bar -->
-    <div class="mb-6 space-y-4">
-        <!-- Main Search -->
-        <div class="relative">
-            <i class="bx bx-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-            <input wire:model.live.debounce.300ms="searchQuery" 
-                   type="text" 
-                   placeholder="Search users by name, username, or bio..."
-                   class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-        </div>
-        
-        <!-- Advanced Filters -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-            <div class="flex items-center space-x-2">
-                <input type="checkbox" wire:model.live="searchInBio" id="searchInBio" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                <label for="searchInBio" class="text-sm text-gray-700">Search in bio</label>
-            </div>
-            
-            <div class="flex items-center space-x-2">
-                <input type="checkbox" wire:model.live="verifiedOnly" id="verifiedOnly" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                <label for="verifiedOnly" class="text-sm text-gray-700">Verified only</label>
-            </div>
-            
-            <div class="space-y-1">
-                <label class="text-xs text-gray-600">Min Followers</label>
-                <input wire:model.live.debounce.500ms="minFollowers" 
-                       type="number" 
-                       placeholder="0"
-                       class="w-full px-3 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent">
-            </div>
-            
-            <div class="space-y-1">
-                <label class="text-xs text-gray-600">Max Followers</label>
-                <input wire:model.live.debounce.500ms="maxFollowers" 
-                       type="number" 
-                       placeholder="∞"
-                       class="w-full px-3 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent">
-            </div>
-            
-            <div class="space-y-1">
-                <label class="text-xs text-gray-600">Location</label>
-                <input wire:model.live.debounce.500ms="locationFilter" 
-                       type="text" 
-                       placeholder="e.g. New York"
-                       class="w-full px-3 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent">
-            </div>
-            
-            <div class="flex items-end">
-                <button wire:click="clearFilters" 
-                        class="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors">
-                    <i class="bx bx-x mr-1"></i>Clear Filters
-                </button>
-            </div>
-            
-            <div class="flex items-end">
-                <button wire:click="exportData" 
-                        class="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded transition-colors">
-                    <i class="bx bx-download mr-1"></i>Export CSV
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tabs -->
     <div class="border-b border-gray-200 mb-6">
-        <nav class="-mb-px flex flex-wrap gap-x-8 gap-y-2">
-            <button wire:click="switchTab('followers')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'followers' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                Followers
-                <span class="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
-                    {{ count($followers) }}
-                </span>
+        <nav class="-mb-px flex gap-x-8">
+            <button wire:click="switchTab('overview')"
+                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'overview' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                Overview
             </button>
-            <button wire:click="switchTab('following')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'following' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                Following
-                <span class="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
-                    {{ count($following) }}
-                </span>
-            </button>
-            
-            <!-- Mutual Analysis Tabs -->
-            <button wire:click="switchTab('mutual_analysis')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'mutual_analysis' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                <i class="bx bx-group mr-1"></i>Mutual
-                <span class="ml-2 bg-green-100 text-green-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
-                    {{ count($mutualAnalysis['mutual_followers']) }}
-                </span>
-            </button>
-            <button wire:click="switchTab('following_not_followers')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'following_not_followers' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                <i class="bx bx-user-minus mr-1"></i>Not Following Back
-                <span class="ml-2 bg-orange-100 text-orange-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
-                    {{ count($mutualAnalysis['following_not_followers']) }}
-                </span>
-            </button>
-            <button wire:click="switchTab('followers_not_following')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'followers_not_following' ? 'border-purple-500 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                <i class="bx bx-user-plus mr-1"></i>Not Following
-                <span class="ml-2 bg-purple-100 text-purple-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
-                    {{ count($mutualAnalysis['followers_not_following']) }}
-                </span>
-            </button>
-            
-            <button wire:click="switchTab('blocked')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'blocked' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                Blocked
-                <span class="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
-                    {{ count($blockedUsers) }}
-                </span>
-            </button>
-            <button wire:click="switchTab('muted')" 
-                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'muted' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
-                Muted
-                <span class="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
-                    {{ count($mutedUsers) }}
-                </span>
+            <button wire:click="switchTab('follow')"
+                    class="py-2 px-1 border-b-2 font-medium text-sm {{ $activeTab === 'follow' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }}">
+                Follow / Unfollow
             </button>
         </nav>
     </div>
 
-    <!-- Loading State -->
     @if($loading)
         <div class="text-center py-12 text-gray-500">
-            <div class="bg-gray-50 rounded-xl p-8 border border-gray-200">
-                <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
-                <h3 class="text-xl font-semibold text-gray-700 mb-4">Loading User Data...</h3>
-                <p class="text-gray-600 mb-4">Fetching your followers, following, blocked, and muted users</p>
-                <p class="text-xs text-gray-500">This may take a few moments...</p>
-            </div>
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mb-4"></div>
+            <p>Loading follower data...</p>
         </div>
-    @else
-        <!-- Content -->
-        @if(count($this->getFilteredData()) > 0)
-            <div class="space-y-4">
-                @foreach($this->getPaginatedData() as $user)
-                    @php
-                        $userId = $user->id ?? null;
-                        $isExpanded = $expandedUserId === $userId;
-                    @endphp
-                    <div class="border border-gray-200 rounded-lg hover:border-gray-300 transition-all {{ $isExpanded ? 'border-blue-300 shadow-md' : '' }}">
-                        <!-- Card Header - Clickable -->
-                        <div class="p-4 cursor-pointer hover:bg-gray-50 transition-colors" 
-                             wire:click="toggleUserCard('{{ $userId }}')">
-                            <div class="flex items-center justify-between">
-                                <!-- User Info -->
-                                <div class="flex items-center space-x-3 flex-1">
-                                    <img src="{{ $user->profile_image_url ?? 'https://via.placeholder.com/40x40' }}" 
-                                         alt="{{ $user->name ?? 'User' }}" 
-                                         class="w-12 h-12 rounded-full">
-                                    <div class="flex-1">
-                                        <div class="flex items-center space-x-2">
-                                            <h3 class="font-medium text-gray-900">{{ $user->name ?? 'Unknown User' }}</h3>
-                                            @if(isset($user->verified) && $user->verified)
-                                                <i class="bx bx-check-circle text-blue-500" title="Verified"></i>
-                                            @endif
-                                        </div>
-                                        <p class="text-sm text-gray-500">@{{ $user->username ?? 'unknown' }}</p>
-                                        @if(isset($user->description))
-                                            <p class="text-sm text-gray-600 mt-1 line-clamp-2">{{ $user->description }}</p>
-                                        @endif
-                                        @if(isset($user->public_metrics))
-                                            <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                                                <span><i class="bx bx-user mr-1"></i>{{ number_format($user->public_metrics->followers_count ?? 0) }} followers</span>
-                                                <span><i class="bx bx-user-plus mr-1"></i>{{ number_format($user->public_metrics->following_count ?? 0) }} following</span>
-                                                <span><i class="bx bx-message mr-1"></i>{{ number_format($user->public_metrics->tweet_count ?? 0) }} tweets</span>
-                                            </div>
-                                        @endif
-                                    </div>
-                                </div>
-
-                                <!-- Expand/Collapse Icon -->
-                                <div class="flex items-center space-x-2 ml-4">
-                                    <i class="bx {{ $isExpanded ? 'bx-chevron-up' : 'bx-chevron-down' }} text-gray-400 text-xl transition-transform"></i>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Expanded Details -->
-                        @if($isExpanded)
-                            <div class="border-t border-gray-200 bg-gray-50 p-4 space-y-4">
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <!-- Full Bio -->
-                                    @if(isset($user->description))
-                                        <div class="md:col-span-2">
-                                            <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Bio</h4>
-                                            <p class="text-sm text-gray-700">{{ $user->description }}</p>
-                                        </div>
-                                    @endif
-
-                                    <!-- Metrics -->
-                                    @if(isset($user->public_metrics))
-                                        <div>
-                                            <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Metrics</h4>
-                                            <div class="space-y-2">
-                                                <div class="flex justify-between">
-                                                    <span class="text-sm text-gray-600">Followers:</span>
-                                                    <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->followers_count ?? 0) }}</span>
-                                                </div>
-                                                <div class="flex justify-between">
-                                                    <span class="text-sm text-gray-600">Following:</span>
-                                                    <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->following_count ?? 0) }}</span>
-                                                </div>
-                                                <div class="flex justify-between">
-                                                    <span class="text-sm text-gray-600">Tweets:</span>
-                                                    <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->tweet_count ?? 0) }}</span>
-                                                </div>
-                                                @if(isset($user->public_metrics->listed_count))
-                                                    <div class="flex justify-between">
-                                                        <span class="text-sm text-gray-600">Listed:</span>
-                                                        <span class="text-sm font-medium text-gray-900">{{ number_format($user->public_metrics->listed_count) }}</span>
-                                                    </div>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    @endif
-
-                                    <!-- Account Info -->
-                                    <div>
-                                        <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Account Info</h4>
-                                        <div class="space-y-2">
-                                            @if(isset($user->verified))
-                                                <div class="flex items-center space-x-2">
-                                                    <span class="text-sm text-gray-600">Verified:</span>
-                                                    <span class="text-sm font-medium {{ $user->verified ? 'text-green-600' : 'text-gray-400' }}">
-                                                        {{ $user->verified ? 'Yes' : 'No' }}
-                                                    </span>
-                                                </div>
-                                            @endif
-                                            @if(isset($user->location))
-                                                <div>
-                                                    <span class="text-sm text-gray-600">Location:</span>
-                                                    <span class="text-sm font-medium text-gray-900 ml-2">{{ $user->location }}</span>
-                                                </div>
-                                            @endif
-                                            @if(isset($user->created_at))
-                                                <div>
-                                                    <span class="text-sm text-gray-600">Joined:</span>
-                                                    <span class="text-sm font-medium text-gray-900 ml-2">
-                                                        {{ \Carbon\Carbon::parse($user->created_at)->format('M Y') }}
-                                                    </span>
-                                                </div>
-                                            @endif
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Actions -->
-                                <div class="flex items-center justify-end space-x-2 pt-4 border-t border-gray-200">
-                                    <a href="https://twitter.com/{{ $user->username ?? 'unknown' }}" 
-                                       target="_blank" 
-                                       rel="noopener noreferrer"
-                                       class="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center">
-                                        <i class="bx bx-external-link mr-2"></i> View on Twitter
-                                    </a>
-                                </div>
-                            </div>
-                        @endif
-                    </div>
-                @endforeach
+    @elseif($activeTab === 'overview')
+        @if($profile || $accountSummary)
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Current followers</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        {{ number_format($accountSummary['currentFollowers'] ?? 0) }}
+                    </p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Growth</p>
+                    <p class="text-2xl font-bold {{ ($accountSummary['growth'] ?? 0) >= 0 ? 'text-green-600' : 'text-red-600' }} mt-1">
+                        {{ ($accountSummary['growth'] ?? 0) >= 0 ? '+' : '' }}{{ number_format($accountSummary['growth'] ?? 0) }}
+                    </p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Growth %</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        {{ number_format($accountSummary['growthPercentage'] ?? 0, 2) }}%
+                    </p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p class="text-xs text-gray-500 uppercase font-semibold">Data points</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        {{ number_format($accountSummary['dataPoints'] ?? count($statsHistory)) }}
+                    </p>
+                </div>
             </div>
 
-            <!-- Pagination -->
-            @if($this->getTotalPages() > 1)
-                <div class="mt-6 flex items-center justify-center">
-                    <div class="flex items-center space-x-2">
-                        <!-- Previous Page -->
-                        <button wire:click="previousPage" 
-                                wire:loading.attr="disabled"
-                                @if($page <= 1) disabled @endif
-                                class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                            <i class="bx bx-chevron-left mr-1"></i>
-                            Previous
-                        </button>
-
-                        <!-- Page Numbers -->
-                        <div class="flex items-center space-x-1">
-                            @for($pageNum = 1; $pageNum <= $this->getTotalPages(); $pageNum++)
-                                @if($pageNum == 1 || $pageNum == $this->getTotalPages() || ($pageNum >= $page - 1 && $pageNum <= $page + 1))
-                                    <button wire:click="goToPage({{ $pageNum }})" 
-                                            @if($pageNum == $page) disabled @endif
-                                            class="px-3 py-2 text-sm font-medium rounded-lg transition-colors {{ $pageNum == $page ? 'bg-blue-600 text-white' : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50' }}">
-                                        {{ $pageNum }}
-                                    </button>
-                                @elseif($pageNum == $page - 2 || $pageNum == $page + 2)
-                                    <span class="px-2 py-2 text-gray-400">...</span>
-                                @endif
-                            @endfor
+            @if($profile)
+                <div class="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div class="flex items-center gap-4">
+                        @if($profile->profile_image_url ?? null)
+                            <img src="{{ $profile->profile_image_url }}" alt="" class="w-14 h-14 rounded-full">
+                        @endif
+                        <div>
+                            <p class="font-semibold text-green-800">{{ $profile->name ?? 'Unknown' }}</p>
+                            <p class="text-sm text-green-700">{{ '@' . ltrim($profile->username ?? ($accountSummary['username'] ?? 'unknown'), '@') }}</p>
                         </div>
-
-                        <!-- Next Page -->
-                        <button wire:click="nextPage" 
-                                wire:loading.attr="disabled"
-                                @if($page >= $this->getTotalPages()) disabled @endif
-                                class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                            Next
-                            <i class="bx bx-chevron-right ml-1"></i>
-                        </button>
-                    </div>
-
-                    <!-- Page Info -->
-                    <div class="ml-4 text-sm text-gray-500">
-                        Page {{ $page }} of {{ $this->getTotalPages() }}
-                        <span class="text-gray-400">•</span>
-                        Showing {{ count($this->getPaginatedData()) }} of {{ count($this->getFilteredData()) }} users
                     </div>
                 </div>
             @endif
 
+            <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-700 mb-4">Date range</h3>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div>
+                        <label class="text-xs text-gray-600">From</label>
+                        <input type="date" wire:model="fromDate" class="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-600">To</label>
+                        <input type="date" wire:model="toDate" class="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-600">Granularity</label>
+                        <select wire:model="granularity" class="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button wire:click="applyDateFilter" wire:loading.attr="disabled"
+                                class="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
+                            Apply
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if(count($statsHistory) > 0)
+                <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Date</th>
+                                <th class="px-4 py-3 text-right font-semibold text-gray-600">Followers</th>
+                                <th class="px-4 py-3 text-right font-semibold text-gray-600">Change</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @php $prev = null; @endphp
+                            @foreach($statsHistory as $point)
+                                @php
+                                    $followers = $point['followers'] ?? 0;
+                                    $change = $prev !== null ? $followers - $prev : null;
+                                    $prev = $followers;
+                                @endphp
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 text-gray-700">{{ $point['date'] ?? '—' }}</td>
+                                    <td class="px-4 py-3 text-right font-medium text-gray-900">{{ number_format($followers) }}</td>
+                                    <td class="px-4 py-3 text-right {{ $change === null ? 'text-gray-400' : ($change >= 0 ? 'text-green-600' : 'text-red-600') }}">
+                                        @if($change === null)
+                                            —
+                                        @else
+                                            {{ $change >= 0 ? '+' : '' }}{{ number_format($change) }}
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @else
+                <div class="text-center py-10 text-gray-500">
+                    <i class="bx bx-line-chart text-4xl mb-3"></i>
+                    <p>No follower history available for this date range yet.</p>
+                    <p class="text-xs mt-2">Follower counts are refreshed once per day.</p>
+                </div>
+            @endif
         @else
-            <!-- Empty State -->
-            <div class="text-center py-12">
-                @if(!empty($searchQuery))
-                    <i class="bx bx-search text-4xl text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">No users found</h3>
-                    <p class="text-gray-500">No users match your search "{{ $searchQuery }}"</p>
-                @else
-                    <i class="bx bx-user text-4xl text-gray-400 mb-4"></i>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">No users found</h3>
-                    <p class="text-gray-500">
-                        @if($activeTab === 'followers')
-                            You don't have any followers yet.
-                        @elseif($activeTab === 'following')
-                            You're not following anyone yet.
-                        @elseif($activeTab === 'blocked')
-                            You haven't blocked any users.
-                        @elseif($activeTab === 'muted')
-                            You haven't muted any users.
-                        @elseif($activeTab === 'mutual_analysis')
-                            No mutual followers found. These are users who follow you and you follow back.
-                        @elseif($activeTab === 'following_not_followers')
-                            Great! All the people you follow also follow you back.
-                        @elseif($activeTab === 'followers_not_following')
-                            You're following all your followers back.
-                        @endif
-                    </p>
-                @endif
+            <div class="text-center py-12 text-gray-500">
+                <i class="bx bx-user text-4xl mb-4"></i>
+                <p>No follower data available. Connect your X account and try refreshing.</p>
             </div>
         @endif
-    @endif
+    @elseif($activeTab === 'follow')
+        <div class="max-w-xl">
+            <p class="text-sm text-gray-600 mb-4">
+                Enter an <strong>@handle</strong>, profile URL (<code class="text-xs bg-gray-100 px-1 rounded">x.com/username</code>), or numeric user ID.
+            </p>
+            <p class="text-sm text-gray-500 mb-4">
+                Works even if the account has not posted recently. Example: <code class="text-xs bg-gray-100 px-1 rounded">@tapswapai</code>
+            </p>
 
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">@handle or user ID</label>
+                    <input type="text"
+                           wire:model="targetUserId"
+                           placeholder="e.g. @tapswapai or https://x.com/tapswapai"
+                           class="w-full mt-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <div class="flex gap-3">
+                    <button wire:click="followUser"
+                            wire:loading.attr="disabled"
+                            wire:target="followUser"
+                            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50">
+                        <span wire:loading.remove wire:target="followUser">Follow</span>
+                        <span wire:loading wire:target="followUser">Following...</span>
+                    </button>
+                    <button wire:click="unfollowUser"
+                            wire:loading.attr="disabled"
+                            wire:target="unfollowUser"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50">
+                        <span wire:loading.remove wire:target="unfollowUser">Unfollow</span>
+                        <span wire:loading wire:target="unfollowUser">Unfollowing...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
 </div>

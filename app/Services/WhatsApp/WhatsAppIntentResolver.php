@@ -25,6 +25,13 @@ class WhatsAppIntentResolver
             return ['action' => 'unknown', 'raw' => $text];
         }
 
+        if ($this->looksMultiStep($text) && $this->shouldUseAi($text)) {
+            $aiParsed = $this->naturalLanguageParser->parse($text);
+            if ($aiParsed) {
+                return $aiParsed + ['resolved_by' => 'ai'];
+            }
+        }
+
         if ($this->isExplicitCommand($text)) {
             $parsed = $this->commandParser->parse($text);
 
@@ -59,11 +66,11 @@ class WhatsAppIntentResolver
     {
         $lower = strtolower($text);
 
-        if (preg_match('/^(post|schedule|thread|draft|generate|image|bookmark|reply|search|add keyword|remove keyword|delete queue|verify|lang|notify|auto)\b/i', $text)) {
+        if (preg_match('/^(post|schedule|thread|draft|generate|image|reply|search|add keyword|remove keyword|delete queue|verify|lang|notify|auto|follow|unfollow|retweet|rt|like)\b/i', $text)) {
             return true;
         }
 
-        if (preg_match('/^(post|schedule|thread|draft|generate|image|bookmark|search|reply|add keyword|remove keyword):/i', $text)) {
+        if (preg_match('/^(post|schedule|thread|draft|generate|image|search|reply|add keyword|remove keyword):/i', $text)) {
             return true;
         }
 
@@ -72,9 +79,9 @@ class WhatsAppIntentResolver
         }
 
         return in_array($lower, [
-            'help', 'commands', '?', 'shortcuts', 'help shortcuts',
+            'help', 'commands', '?', 'shortcut', 'shortcuts', 'help shortcuts',
             'status', 'settings', 'queue', 'ideas', 'drafts', 'mentions', 'mention',
-            'keywords', 'keyword', 'confirm', 'unlink', 'assets', 'bookmarks',
+            'keywords', 'keyword', 'confirm', 'unlink', 'assets',
             'start', 'onboard', 'hello', 'hi',
         ], true);
     }
@@ -82,5 +89,26 @@ class WhatsAppIntentResolver
     protected function shouldUseAi(string $text): bool
     {
         return ! empty(env('OPENAI_API_KEY'));
+    }
+
+    protected function looksMultiStep(string $text): bool
+    {
+        $lower = strtolower($text);
+
+        if (preg_match('/\b(?:create|write|make|compose|generate).*\b(?:post|tweet).*\b(?:then|and)\b.*\b(?:schedule|post|publish)/i', $text)) {
+            return true;
+        }
+
+        if (preg_match('/\b(?:post|publish|tweet)\s+(?:the\s+)?(?:first|second|third|\d+(?:st|nd|rd|th)?)\s+idea\b/i', $text)) {
+            return true;
+        }
+
+        if (preg_match('/\b(?:then|and then|after that|also)\b/i', $text)
+            && preg_match('/\b(?:schedule|post|publish|queue|draft|generate|create|write)\b/i', $text)) {
+            return true;
+        }
+
+        return str_word_count($lower) >= 8
+            && preg_match('/\b(?:schedule|post|publish|create|write|generate|ideas?)\b/i', $text);
     }
 }

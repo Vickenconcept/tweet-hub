@@ -6,6 +6,11 @@ use Throwable;
 
 class WhatsAppUserMessages
 {
+    public static function tooBusyTryLater(): string
+    {
+        return "You've been busy! Take a little break, then come back and message me again — I'll be here when you're ready.";
+    }
+
     public static function fromException(Throwable $e): string
     {
         $raw = trim($e->getMessage());
@@ -28,8 +33,6 @@ class WhatsAppUserMessages
             'Connect your',
             'Permission denied',
             'Could not generate ideas',
-            'Could not load bookmarks',
-            'Could not bookmark',
             'Verification code',
             'Invalid verification',
             'No queued post',
@@ -52,8 +55,6 @@ class WhatsAppUserMessages
             'No tweet #',
             'Send *mentions*',
             'WhatsApp remote control',
-            'Rate limit active',
-            'Rate limit reached',
             'Unknown pending action',
         ];
 
@@ -118,19 +119,15 @@ class WhatsAppUserMessages
         }
 
         if (str_contains($lower, '429') || str_contains($lower, 'too many requests')) {
-            return 'X rate limit reached. Wait a few minutes and try again.';
+            return 'X is a bit busy right now. Wait a few minutes, then try again.';
         }
 
         if (str_contains($lower, 'rate limit')) {
-            return 'Too many requests right now. Please wait a bit and try again.';
+            return 'Things are moving a little fast. Wait a bit, then try again.';
         }
 
         if (str_contains($lower, 'oauth') || str_contains($lower, 'not authenticated')) {
             return 'Connect your X/Twitter account in the app first.';
-        }
-
-        if (str_contains($lower, 'bookmark')) {
-            return 'Bookmarks are not available on your current X plan. Use the app instead.';
         }
 
         if (str_contains($lower, 'timeout') || str_contains($lower, 'curl') || str_contains($lower, 'resolve host') || str_contains($lower, 'connection')) {

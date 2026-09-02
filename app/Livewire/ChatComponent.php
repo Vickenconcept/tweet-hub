@@ -17,6 +17,9 @@ use Carbon\Carbon;
 class ChatComponent extends Component
 {
     use WithFileUploads;
+
+    public const MAX_THREAD_PARTS = 2;
+
     public $activeTab = 'compose';
     public $message = '';
     public $successMessage = '';
@@ -323,6 +326,12 @@ class ChatComponent extends Component
         if (empty(trim($this->message))) {
             return;
         }
+
+        if (count($this->threadMessages) >= self::MAX_THREAD_PARTS - 1) {
+            $this->errorMessage = 'Threads are limited to '.self::MAX_THREAD_PARTS.' tweets. Write the second tweet below and click Tweet now.';
+
+            return;
+        }
         
         if ($this->editingThreadIndex !== null) {
             $this->threadMessages[$this->editingThreadIndex] = trim($this->message);
@@ -332,6 +341,7 @@ class ChatComponent extends Component
         }
         
         $this->message = '';
+        $this->errorMessage = '';
         $this->threadStarted = true;
         $this->dispatch('thread-message-added');
         $this->dispatch('thread-state-updated', ['threadStarted' => true]);
@@ -368,6 +378,99 @@ class ChatComponent extends Component
         }
     }
 
+    /**
+     * @return array{text: string, mediaIds: array<int, string>, mediaCodes: array<int, string>}|null
+     */
+    protected function prepareMessagePart(string $part, $user, TwitterService $twitter): ?array
+    {
+        $part = trim($part);
+        if ($part === '') {
+            return null;
+        }
+
+        $mediaIds = [];
+        $mediaCodes = [];
+        $matches = [];
+
+        if (preg_match_all('/\[(img|vid|gif):([a-zA-Z0-9]+)\]/', $part, $matches)) {
+            foreach ($matches[2] as $index => $code) {
+                $asset = Asset::where('user_id', $user->id)->where('code', $code)->first();
+                if (! $asset) {
+                    Log::error('Asset not found', ['code' => $code, 'user_id' => $user->id]);
+                    continue;
+                }
+
+                if ($asset->type === 'video') {
+                    $this->errorMessage = 'Video uploads are temporarily disabled due to Twitter API limitations. The post will continue without the video.';
+                    continue;
+                }
+
+                $mediaId = null;
+                if (str_contains($asset->original_name, '.gif')) {
+                    try {
+                        $mediaId = str_contains($asset->path, 'cloudinary.com')
+                            ? $this->uploadCloudinaryMediaToTwitter($twitter, $asset->path)
+                            : $twitter->uploadLocalMedia($asset->path);
+                    } catch (\Exception $e) {
+                        Log::warning('GIF upload failed', ['code' => $code, 'error' => $e->getMessage()]);
+                    }
+
+                    if (! $mediaId) {
+                        $this->errorMessage = 'GIF upload failed. The post will continue without the GIF.';
+                        if (trim($part) === '') {
+                            $part = '🎬';
+                        }
+                        continue;
+                    }
+                } elseif (str_contains($asset->path, 'cloudinary.com')) {
+                    $mediaId = $this->uploadCloudinaryMediaToTwitter($twitter, $asset->path);
+                } else {
+                    $mediaId = $twitter->uploadLocalMedia(storage_path('app/public/'.$asset->path));
+                }
+
+                if (! $mediaId) {
+                    if (str_contains($asset->path, 'cloudinary.com')) {
+                        $tempFile = $this->downloadCloudinaryFile($asset->path);
+                        if ($tempFile) {
+                            $mediaId = $twitter->uploadMedia($tempFile);
+                            unlink($tempFile);
+                        }
+                    } else {
+                        $mediaId = $twitter->uploadMedia(storage_path('app/public/'.$asset->path));
+                    }
+                }
+
+                if ($mediaId) {
+                    $mediaIds[] = $mediaId;
+                    $mediaCodes[] = $code;
+                }
+            }
+
+            $part = preg_replace('/\[(img|vid|gif):([a-zA-Z0-9]+)\]/', '', $part);
+        }
+
+        if (empty(trim($part))) {
+            if (! empty($mediaIds)) {
+                $hasVideo = in_array('vid', $matches[1] ?? [], true);
+                $hasGif = in_array('gif', $matches[1] ?? [], true);
+                $part = $hasVideo ? '🎬' : ($hasGif ? '✨' : '📸');
+            } else {
+                $part = 'Hello! 👋';
+            }
+        }
+
+        if (mb_strlen($part, 'UTF-8') > 280) {
+            $part = $twitter->truncateForTwitter($part);
+            $this->errorMessage = 'A tweet part was too long and has been truncated to fit the 280 character limit.';
+        }
+
+        return [
+            'text' => trim($part),
+            'mediaIds' => $mediaIds,
+            'mediaCodes' => $mediaCodes,
+        ];
+    }
+
     public function savePost()
     {
         if (empty($this->threadMessages) && empty(trim($this->message))) {
@@ -384,238 +487,92 @@ class ChatComponent extends Component
             $this->errorMessage = 'You must be logged in to post.';
             return;
         }
-        if (!$user->twitter_account_connected) {
+        if (! $user->isTwitterConnected()) {
             $this->errorMessage = 'You must connect your X (Twitter) account first.';
             return;
         }
 
-        $settings = [
-            'account_id' => $user->twitter_account_id,
-            'access_token' => $user->twitter_access_token,
-            'access_token_secret' => $user->twitter_access_token_secret,
-            'consumer_key' => config('services.twitter.api_key'),
-            'consumer_secret' => config('services.twitter.api_key_secret'),
-            'bearer_token' => config('services.twitter.bearer_token'),
-        ];
-
-        $twitter = new TwitterService($settings);
-        $prevTweetId = null;
-        $prevLocalPostId = null;
-        $isThread = count($messages) > 1;
-        $threadStarted = false;
+        $twitter = new TwitterService($user);
+        $preparedParts = [];
 
         foreach ($messages as $part) {
-            $part = trim($part);
-            if ($part === '') continue;
+            $prepared = $this->prepareMessagePart($part, $user, $twitter);
+            if ($prepared !== null) {
+                $preparedParts[] = $prepared;
+            }
+        }
 
-            // Parse asset codes [img:code], [vid:code], [gif:code] and upload assets
-            $mediaIds = [];
-            $mediaCodes = [];
-            if (preg_match_all('/\[(img|vid|gif):([a-zA-Z0-9]+)\]/', $part, $matches)) {
-                Log::info('Found asset codes in message', [
-                    'codes' => $matches[2],
-                    'types' => $matches[1],
-                    'message_part' => $part
-                ]);
-                
-                foreach ($matches[2] as $index => $code) {
-                    $asset = Asset::where('user_id', $user->id)->where('code', $code)->first();
-                    if ($asset) {
-                        Log::info('Processing asset', [
-                            'code' => $code,
-                            'asset_path' => $asset->path,
-                            'is_cloudinary' => str_contains($asset->path, 'cloudinary.com')
-                        ]);
-                        
-                        // Skip video uploads for now due to Twitter API issues
-                        if ($asset->type === 'video') {
-                            Log::info('Skipping video upload due to API limitations', ['code' => $code]);
-                            $this->errorMessage = 'Video uploads are temporarily disabled due to Twitter API limitations. The post will continue without the video.';
-                            continue; // Skip this asset and continue with others
-                        }
-                        
-                        // For GIFs, try proper upload with consistent media ID handling
-                        if (str_contains($asset->original_name, '.gif')) {
-                            Log::info('Attempting GIF upload with proper media ID handling', ['code' => $code]);
-                            
-                            // Try GIF upload once with proper media ID tracking
-                            $mediaId = null;
-                            
-                            try {
-                                if (str_contains($asset->path, 'cloudinary.com')) {
-                                    $mediaId = $this->uploadCloudinaryMediaToTwitter($twitter, $asset->path);
-                                } else {
-                                    $mediaId = $twitter->uploadLocalMedia($asset->path);
-                                }
-                                
-                                if ($mediaId) {
-                                    Log::info('GIF upload successful', [
-                                        'code' => $code,
-                                        'media_id' => $mediaId
-                                    ]);
-                                    
-                                    // Add to arrays immediately to ensure consistency
-                                    $mediaIds[] = $mediaId;
-                                    $mediaCodes[] = $code;
-                                    
-                                    Log::info('GIF uploaded successfully with consistent media ID', [
-                                        'code' => $code,
-                                        'media_id' => $mediaId
-                                    ]);
-                                    continue; // Skip the normal upload process
-                                }
-                            } catch (\Exception $e) {
-                                Log::warning('GIF upload failed', [
-                                    'code' => $code,
-                                    'error' => $e->getMessage()
-                                ]);
-                            }
-                            
-                            // If GIF upload failed, show error but don't convert to static image
-                            Log::error('GIF upload failed', ['code' => $code]);
-                            $this->errorMessage = 'GIF upload failed. The post will continue without the GIF.';
-                            
-                            // Add fallback content for GIFs
-                            $part = trim($part);
-                            if (empty($part)) {
-                                $part = '🎬'; // Add a movie emoji as fallback
-                            }
-                            
-                            continue; // Skip this asset and continue with others
-                        }
-                        
-                        // Check if it's a Cloudinary URL or local file
-                        if (str_contains($asset->path, 'cloudinary.com')) {
-                            // For Cloudinary URLs, we need to download the file first
-                            $mediaId = $this->uploadCloudinaryMediaToTwitter($twitter, $asset->path);
-                        } else {
-                            // For local files, use the existing method
-                            $fullPath = storage_path('app/public/' . $asset->path);
-                            $mediaId = $twitter->uploadLocalMedia($fullPath);
-                        }
-                        
-                        // If uploadLocalMedia fails, try the original uploadMedia method
-                        if (!$mediaId) {
-                            Log::info('Trying alternative upload method', ['code' => $code]);
-                            if (str_contains($asset->path, 'cloudinary.com')) {
-                                $tempFile = $this->downloadCloudinaryFile($asset->path);
-                                if ($tempFile) {
-                                    $mediaId = $twitter->uploadMedia($tempFile);
-                                    unlink($tempFile); // Clean up
-                                }
-                            } else {
-                                $fullPath = storage_path('app/public/' . $asset->path);
-                                $mediaId = $twitter->uploadMedia($fullPath);
-                            }
-                        }
-                        
-                        if ($mediaId) {
-                            $mediaIds[] = $mediaId;
-                            $mediaCodes[] = $code;
-                            Log::info('Media uploaded successfully', [
-                                'code' => $code,
-                                'media_id' => $mediaId
-                            ]);
-                        } else {
-                            Log::error('Failed to upload media', [
-                                'code' => $code,
-                                'path' => $asset->path,
-                                'asset_type' => $asset->type
-                            ]);
-                            
-                            // Add specific error message for different media types
-                            if ($asset->type === 'video') {
-                                $this->errorMessage = 'Video upload failed. Please ensure the video is under 15MB and in MP4 format. The post will continue without the video.';
-                            } elseif (str_contains($asset->original_name, '.gif')) {
-                                $this->errorMessage = 'GIF upload failed. Twitter may need more time to process animated GIFs. The post will continue without the GIF.';
-                                
-                                // For GIFs, try to add a fallback message
-                                $part = trim($part);
-                                if (empty($part)) {
-                                    $part = '🎬'; // Add a movie emoji as fallback
-                                }
-                            }
-                            
-                            // Continue without this media - don't fail the entire post
-                        }
-                    } else {
-                        Log::error('Asset not found', ['code' => $code, 'user_id' => $user->id]);
+        if ($preparedParts === []) {
+            $this->errorMessage = 'Nothing to post.';
+            return;
+        }
+
+        if (count($preparedParts) > self::MAX_THREAD_PARTS) {
+            $this->errorMessage = 'Threads are limited to '.self::MAX_THREAD_PARTS.' tweets.';
+            return;
+        }
+
+        $isThread = count($preparedParts) > 1;
+
+        try {
+            if ($isThread) {
+                $texts = array_column($preparedParts, 'text');
+                $mediaByPart = [];
+                foreach ($preparedParts as $index => $part) {
+                    if (! empty($part['mediaIds'])) {
+                        $mediaByPart[$index] = $part['mediaIds'];
                     }
                 }
-                // Remove all asset code tags from the message
-                $part = preg_replace('/\[(img|vid|gif):([a-zA-Z0-9]+)\]/', '', $part);
-            }
 
-            // If we have no text content, add a default message
-            if (empty(trim($part))) {
-                if (!empty($mediaIds)) {
-                    // Check if we have videos or GIFs
-                    $hasVideo = false;
-                    $hasGif = false;
-                    foreach ($matches[1] ?? [] as $type) {
-                        if ($type === 'vid') $hasVideo = true;
-                        if ($type === 'gif') $hasGif = true;
-                    }
-                    
-                    if ($hasVideo) {
-                        $part = '🎬'; // Video emoji
-                    } elseif ($hasGif) {
-                        $part = '✨'; // Sparkles for GIF
-                    } else {
-                        $part = '📸'; // Camera for image
-                    }
-                } else {
-                    $part = 'Hello! 👋'; // Default text
-                }
-            }
+                $response = $twitter->createThread($texts, $mediaByPart);
+                $tweetIds = $response->data->tweet_ids ?? [$response->data->id];
+                $prevLocalPostId = null;
 
-            // Check character limit and truncate if necessary
-            $charCount = mb_strlen($part, 'UTF-8');
-            if ($charCount > 280) {
-                $originalPart = $part;
-                $part = $twitter->truncateForTwitter($part);
-                $this->errorMessage = "Tweet part was too long ({$charCount} chars) and has been truncated to fit Twitter's 280 character limit.";
-            }
-
-            try {
-                if ($isThread && $prevTweetId) {
-                    $response = $twitter->createTweet($part, $mediaIds, $prevTweetId);
-                } else {
-                    $response = $twitter->createTweet($part, $mediaIds);
-                }
-                
-                if (isset($response->data) && isset($response->data->id)) {
-                    $prevTweetId = $response->data->id;
-                    
-                    // Save the post to database
+                foreach ($preparedParts as $index => $part) {
                     $post = Post::create([
                         'user_id' => $user->id,
-                        'content' => $part,
-                        'media' => $mediaCodes,
-                        'twitter_post_id' => $response->data->id,
-                        'in_reply_to_post_id' => $isThread && $threadStarted ? $prevLocalPostId : null,
+                        'content' => $part['text'],
+                        'media' => $part['mediaCodes'],
+                        'twitter_post_id' => $tweetIds[$index] ?? ($tweetIds[0] ?? null),
+                        'in_reply_to_post_id' => $index > 0 ? $prevLocalPostId : null,
                         'status' => 'sent',
                         'sent_at' => now(),
                     ]);
-                    
-                    // Store the local post ID for the next iteration
                     $prevLocalPostId = $post->id;
                 }
-                
-                if ($isThread && !$threadStarted) {
-                    $threadStarted = true;
+            } else {
+                $part = $preparedParts[0];
+                $response = $twitter->createTweet($part['text'], $part['mediaIds']);
+
+                if (isset($response->data) && isset($response->data->id)) {
+                    Post::create([
+                        'user_id' => $user->id,
+                        'content' => $part['text'],
+                        'media' => $part['mediaCodes'],
+                        'twitter_post_id' => $response->data->id,
+                        'status' => 'sent',
+                        'sent_at' => now(),
+                    ]);
                 }
-            } catch (\Exception $e) {
-                $this->errorMessage = 'Failed to post to X: ' . $e->getMessage();
-                return;
             }
+        } catch (\Exception $e) {
+            $message = $e->getMessage();
+            if (str_contains($message, 'already scheduled, publishing, or was posted')) {
+                $message = 'This exact content was already posted in the last 24 hours. Change the text slightly and try again.';
+            } elseif (str_contains($message, 'Hourly limit') || str_contains($message, '25/25') || str_contains($message, 'posting limit reached')) {
+                $message = 'X posting limit reached (25 posts/hour). Wait for the limit to reset and try again.';
+            }
+            $this->errorMessage = 'Failed to post to X: '.$message;
+            return;
         }
 
         $this->message = '';
         $this->threadMessages = [];
         $this->editingThreadIndex = null;
         $this->draftId = null;
-        $this->successMessage = $isThread ? 'Thread posted to X successfully!' : 'Tweet posted to X successfully!';
+        $this->successMessage = $isThread
+            ? 'Thread posted to X ('.count($preparedParts).' tweets)! Open the first tweet and tap "Show this thread" if needed.'
+            : 'Tweet posted to X successfully!';
         $this->errorMessage = '';
         $this->threadStarted = false;
         $this->dispatch('thread-state-updated', ['threadStarted' => false]);

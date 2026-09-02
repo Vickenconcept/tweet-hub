@@ -41,6 +41,20 @@ class ZernioWebhookController extends Controller
             'event_id' => $payload['id'] ?? $request->header('X-Zernio-Event-Id') ?? $request->header('X-Late-Event-Id'),
         ]);
 
+        if ($event === 'account.connected') {
+            $this->handleAccountConnected($payload);
+
+            return response('OK', 200);
+        }
+
+        if ($event === 'comment.received') {
+            Log::info('Zernio comment.received webhook', [
+                'account_id' => data_get($payload, 'data.accountId'),
+            ]);
+
+            return response('OK', 200);
+        }
+
         if ($event !== 'message.received') {
             Log::info('Zernio webhook ignored (unsupported event)', ['event' => $event]);
 
@@ -126,5 +140,50 @@ class ZernioWebhookController extends Controller
         ]);
 
         return response('OK', 200);
+    }
+
+    protected function handleAccountConnected(array $payload): void
+    {
+        $account = data_get($payload, 'data.account', data_get($payload, 'account', []));
+        $profileId = data_get($account, 'profileId') ?? data_get($payload, 'data.profileId');
+        $accountId = data_get($account, '_id') ?? data_get($account, 'accountId');
+        $platform = data_get($account, 'platform');
+
+        if ($platform !== 'twitter' || ! $profileId || ! $accountId) {
+            Log::info('Zernio account.connected ignored', [
+                'platform' => $platform,
+                'profile_id' => $profileId,
+                'account_id' => $accountId,
+            ]);
+
+            return;
+        }
+
+        $user = User::where('zernio_profile_id', $profileId)->first();
+        if (! $user) {
+            Log::warning('Zernio account.connected: no user for profile', [
+                'profile_id' => $profileId,
+                'account_id' => $accountId,
+            ]);
+
+            return;
+        }
+
+        try {
+            $user->syncZernioTwitterAccountById(
+                app(ZernioService::class),
+                (string) $accountId,
+                (string) $profileId
+            );
+            Log::info('Zernio account.connected synced user', [
+                'user_id' => $user->id,
+                'account_id' => $accountId,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Zernio account.connected sync failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

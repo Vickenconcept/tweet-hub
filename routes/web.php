@@ -3,9 +3,9 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ZernioConnectController;
 use App\Http\Controllers\ZernioWebhookController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\TwitterAuthController;
 
 Route::post('/', [ZernioWebhookController::class, 'inbox']);
 Route::post('/webhooks/zernio/inbox', [ZernioWebhookController::class, 'inbox']);
@@ -56,7 +56,6 @@ Route::middleware(['auth'])->group(function () {
     Route::view('twitter-mentions', 'twitter-mentions')->name('twitter-mentions');
     Route::view('keyword-monitoring', 'keyword-monitoring')->name('keyword-monitoring');
     Route::view('tweet-analytics', 'tweet-analytics')->name('tweet-analytics');
-    Route::view('bookmarks-management', 'bookmarks-management')->name('bookmarks-management');
     Route::view('user-management', 'user-management')->name('user-management');
     Route::view('assets', 'assets')->name('assets');
     Route::view('business-auto-posts', 'business-auto-posts')->name('business-auto-posts');
@@ -68,7 +67,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
-    Route::get('/connect/twitter', [TwitterAuthController::class, 'redirectToTwitter'])->name('twitter.connect');
-    Route::get('/connect/twitter/callback', [TwitterAuthController::class, 'handleTwitterCallback'])->name('twitter.callback');
-    Route::delete('/disconnect/twitter', [TwitterAuthController::class, 'disconnectTwitter'])->name('twitter.disconnect');
+    Route::get('/connect/twitter', [ZernioConnectController::class, 'connectTwitter'])->name('twitter.connect');
+    Route::get('/connect/twitter/callback', [ZernioConnectController::class, 'handleTwitterCallback'])->name('twitter.callback');
+    Route::delete('/disconnect/twitter', [ZernioConnectController::class, 'disconnectTwitter'])->name('twitter.disconnect');
 });

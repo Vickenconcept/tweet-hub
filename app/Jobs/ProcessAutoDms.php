@@ -48,16 +48,7 @@ class ProcessAutoDms implements ShouldQueue
         $sentCount = 0;
         $skippedExisting = 0;
 
-        $settings = [
-            'account_id' => $user->twitter_account_id,
-            'consumer_key' => config('services.twitter.api_key'),
-            'consumer_secret' => config('services.twitter.api_key_secret'),
-            'access_token' => $user->twitter_access_token,
-            'access_token_secret' => $user->twitter_access_token_secret,
-            'bearer_token' => config('services.twitter.bearer_token'),
-        ];
-
-        $twitter = new TwitterService($settings);
+        $twitter = new TwitterService($user);
 
         Log::info('📩 ProcessAutoDms job started', [
             'user_id' => $user->id,
@@ -142,7 +133,7 @@ class ProcessAutoDms implements ShouldQueue
                 // Get recipient username (required for public replies)
                 $recipientUsername = null;
                 try {
-                    $userInfo = $twitter->findUser($recipientId, \Noweh\TwitterApi\UserLookup::MODES['ID']);
+                    $userInfo = $twitter->findUser($recipientId, 'id');
                     if ($userInfo && isset($userInfo->data)) {
                         $userData = is_array($userInfo->data) ? $userInfo->data : (array) $userInfo->data;
                         if (is_object($userData)) {

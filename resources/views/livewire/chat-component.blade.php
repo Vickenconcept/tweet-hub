@@ -90,6 +90,9 @@ Livewire.on('post-scheduled', () => {
             <div class=" gap-4 grid grid-cols-6">
                 <!-- Thread Messages Panel -->
                 <div class="col-span-2" x-show="threadStarted">
+                    <div class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                        Threads are limited to {{ \App\Livewire\ChatComponent::MAX_THREAD_PARTS }} tweets (1 API post).
+                    </div>
                     <div class="mb-4">
                         {{-- <div class="text-lg font-bold text-gray-900 mb-2">Thread Messages</div> --}}
                         {{-- <button type="button" @click="$wire.endThread()"
@@ -133,7 +136,7 @@ Livewire.on('post-scheduled', () => {
                     <form wire:submit.prevent="savePost">
                         <div class="relative mb-4">
                             <textarea wire:model="message" x-ref="textarea" rows="4" maxlength="280"
-                                placeholder="Write here. Press enter key 3 times to start a thread."
+                                placeholder="Write here. Press enter 3 times to start a 2-tweet thread."
                                 class="w-full rounded-2xl border border-gray-200 px-6 py-4 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none text-gray-800 bg-white shadow-sm text-sm"
                                 @keyup="checkThread($event.target.value)"></textarea>
                             <div class="absolute bottom-3 right-6 text-sm bg-white px-3 py-1 rounded-xl shadow-sm border border-gray-200"
@@ -206,7 +209,7 @@ Livewire.on('post-scheduled', () => {
                             <template x-if="threadStarted">
                                 <button type="button" wire:click="addToThread"
                                     class="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 transition-colors cursor-pointer shadow-sm"
-                                    :disabled="!canTweet">
+                                    :disabled="!canTweet || $wire.threadMessages.length >= {{ \App\Livewire\ChatComponent::MAX_THREAD_PARTS - 1 }}">
                                     <span wire:loading.remove wire:target="addToThread">Add to Thread</span>
                                     <span wire:loading wire:target="addToThread"><i
                                             class='bx bx-loader-alt bx-spin'></i></span>

@@ -28,9 +28,10 @@
                             <p class="text-xs font-semibold text-gray-700">AI Auto Reply</p>
                             <p class="text-[11px] text-gray-500">
                                 @if($autoReplyEnabled)
-                                    <span class="text-green-600 font-medium">Enabled</span> - 
+                                    <span class="text-green-600 font-medium">Enabled</span> —
+                                    only replies when X allows (you are @mentioned or it is your post).
                                 @else
-                                    <span class="text-gray-500">Disabled</span> - 
+                                    <span class="text-gray-500">Disabled</span> —
                                 @endif
                                 <a href="{{ route('twitter-settings') }}" class="text-blue-600 hover:underline">Manage in Settings</a>
                             </p>
@@ -81,6 +82,11 @@
                 </button>
             </div>
         </div>
+    </div>
+
+    <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-800">
+        <i class="bx bx-info-circle mr-1"></i>
+        Searches public tweets from the last 7 days using X search operators.
     </div>
 
     <!-- Keyword Management Section - Hidden when advanced search is enabled -->
@@ -446,6 +452,12 @@
             @endif
         </div>
     @elseif(count($tweets) > 0)
+        <div class="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+            <p class="text-sm text-amber-900">
+                <strong>X API note:</strong> Replies from keyword search only work when the tweet @mentions you or is your own post.
+                For other tweets, use <strong>Like</strong> or <strong>Retweet</strong> to engage.
+            </p>
+        </div>
         <!-- Tweets List -->
         <div class="space-y-4">
             @foreach($paginatedTweets as $tweet)
@@ -483,6 +495,7 @@
                             
                             <!-- Action Buttons -->
                             <div class="flex items-center gap-2 flex-wrap">
+                                @if($this->canReplyToTweet($tweet))
                                 <button wire:click="replyToTweet('{{ $tweetId }}')" 
                                         class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer border border-gray-200">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
@@ -490,6 +503,7 @@
                                     </svg>
                                     Reply
                                 </button>
+                                @endif
                                 <button class="like-button inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden group border border-red-200"
                                         x-data="{ 
                                             liked: false, 
@@ -534,8 +548,7 @@
                                         <div x-show="liked" class="absolute inset-0 bg-red-200 opacity-30 animate-ping"></div>
                                     </div>
                                 </button>
-                                <button wire:click="retweetTweet('{{ $tweetId }}')" 
-                                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden border border-green-200"
+                                <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden border border-green-200"
                                         x-data="{ 
                                             retweeted: false, 
                                             animating: false,
@@ -692,6 +705,11 @@
                 </div>
 
                 <div class="mb-8">
+                    @if($errorMessage)
+                        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-2xl">
+                            <p class="text-sm text-red-700">{{ $errorMessage }}</p>
+                        </div>
+                    @endif
                     <label for="replyContent" class="block text-sm font-semibold text-gray-800 mb-2">Your Reply</label>
                     <textarea wire:model="replyContent" id="replyContent" rows="5"
                               class="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm"

@@ -47,40 +47,15 @@ class TweetAnalyticsComponent extends Component
 
     private function getTwitterService()
     {
-        if (!$this->twitterService) {
+        if (! $this->twitterService) {
             $user = Auth::user();
-            if (!$user || !$user->twitter_account_connected) {
-                throw new \Exception('Twitter account not connected');
+            if (! $user || ! $user->isTwitterConnected()) {
+                throw new \Exception('X account not connected. Please connect your account in settings.');
             }
 
-            $settings = [
-                'account_id' => $user->twitter_account_id,
-                'consumer_key' => config('services.twitter.api_key'),
-                'consumer_secret' => config('services.twitter.api_key_secret'),
-                'access_token' => $user->twitter_access_token,
-                'access_token_secret' => $user->twitter_access_token_secret,
-                'bearer_token' => config('services.twitter.bearer_token'),
-            ];
-
-            // Validate that all required settings are present
-            $requiredSettings = ['account_id', 'consumer_key', 'consumer_secret', 'access_token', 'access_token_secret'];
-            foreach ($requiredSettings as $setting) {
-                if (empty($settings[$setting])) {
-                    Log::error('Missing Twitter setting', [
-                        'setting' => $setting,
-                        'user_id' => $user->id,
-                        'twitter_account_connected' => $user->twitter_account_connected,
-                        'twitter_account_id' => $user->twitter_account_id,
-                        'has_access_token' => !empty($user->twitter_access_token),
-                        'has_access_token_secret' => !empty($user->twitter_access_token_secret)
-                    ]);
-                    throw new \Exception("Missing required Twitter setting: {$setting}");
-                }
-            }
-
-            $this->twitterService = new TwitterService($settings);
+            $this->twitterService = new TwitterService($user);
         }
-        
+
         return $this->twitterService;
     }
 

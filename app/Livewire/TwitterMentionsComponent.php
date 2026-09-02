@@ -73,7 +73,7 @@ class TwitterMentionsComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
             
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             $rateLimitCheck = $twitterService->isRateLimitedForMentions();
             
             Log::info('🔍 Rate limit status check', [
@@ -128,7 +128,7 @@ class TwitterMentionsComponent extends Component
             return;
         }
 
-        if (!$user->twitter_account_connected || !$user->twitter_account_id || !$user->twitter_access_token || !$user->twitter_access_token_secret) {
+        if (! $user->isTwitterConnected()) {
             $this->errorMessage = 'Please connect your Twitter account first.';
             $this->loading = false;
             $this->isLoading = false;
@@ -202,7 +202,7 @@ class TwitterMentionsComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             
             // Use timeline method (single API call - more reliable and avoids double rate limit hits)
             Log::info('Fetching mentions using timeline API', ['user_id' => $user->twitter_account_id]);
@@ -360,7 +360,7 @@ class TwitterMentionsComponent extends Component
                         'bearer_token' => config('services.twitter.bearer_token'),
                     ];
                     
-                    $twitterService = new TwitterService($settings);
+                    $twitterService = new TwitterService($user);
                     $rateLimitCheck = $twitterService->isRateLimitedForMentions();
                     
                     if ($rateLimitCheck['rate_limited']) {
@@ -515,7 +515,7 @@ class TwitterMentionsComponent extends Component
                     'bearer_token' => config('services.twitter.bearer_token'),
                 ];
 
-                $twitterService = new TwitterService($settings);
+                $twitterService = new TwitterService($user);
 
                 Log::info('🤖 Sending AI auto-reply to mention', [
                     'user_id' => $user->id,
@@ -688,6 +688,7 @@ class TwitterMentionsComponent extends Component
                     'id' => is_object($mention) ? ($mention->id ?? null) : ($mention['id'] ?? null),
                     'text' => is_object($mention) ? ($mention->text ?? '') : ($mention['text'] ?? ''),
                     'author_id' => is_object($mention) ? ($mention->author_id ?? null) : ($mention['author_id'] ?? null),
+                    'author_username' => is_object($mention) ? ($mention->author_username ?? null) : ($mention['author_username'] ?? null),
                 ];
             }
 
@@ -768,7 +769,7 @@ class TwitterMentionsComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             $response = $twitterService->createTweet(
                 $this->replyContent, 
                 [], 
@@ -806,7 +807,7 @@ class TwitterMentionsComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             $response = $twitterService->likeTweet($mentionId);
             
             if ($response) {
@@ -895,7 +896,7 @@ class TwitterMentionsComponent extends Component
                 'bearer_token' => config('services.twitter.bearer_token'),
             ];
 
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
             $response = $twitterService->retweet($mentionId);
             
             if ($response) {
@@ -937,6 +938,12 @@ class TwitterMentionsComponent extends Component
                 Log::warning('⚠️ Retweet failed - no response', ['mention_id' => $mentionId]);
             }
         } catch (\Exception $e) {
+            if (stripos($e->getMessage(), 'already retweeted') !== false) {
+                $this->successMessage = 'Tweet was already retweeted!';
+                $this->dispatch('show-success', 'Tweet was already retweeted!');
+                $this->clearMentionsCache();
+                return;
+            }
             Log::error('❌ Failed to retweet mention', [
                 'mention_id' => $mentionId,
                 'error' => $e->getMessage()

@@ -83,6 +83,11 @@
         </div>
     </div>
 
+    <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-800">
+        <i class="bx bx-info-circle mr-1"></i>
+        Shows global @mentions from the last 7 days, plus replies on your posts.
+    </div>
+
     <!-- Success/Error Messages -->
     @if($successMessage)
         <div class="bg-white rounded-3xl shadow-sm border border-green-200 p-4" 
@@ -235,8 +240,7 @@
                                         <div x-show="liked" class="absolute inset-0 bg-red-200 opacity-30 animate-ping"></div>
                                     </div>
                                 </button>
-                                <button wire:click="retweetMention('{{ $mentionId }}')" 
-                                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden border border-green-200"
+                                <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-xl transition-all duration-300 cursor-pointer relative overflow-hidden border border-green-200"
                                         x-data="{ 
                                             retweeted: false, 
                                             animating: false,

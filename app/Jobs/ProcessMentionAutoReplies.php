@@ -198,8 +198,7 @@ class ProcessMentionAutoReplies implements ShouldQueue
         ]);
 
         // Use user's TwitterAccount credentials instead of app credentials
-        $settings = $twitterAccount->getTwitterServiceSettings();
-        $twitterService = new TwitterService($settings);
+        $twitterService = new TwitterService($user);
 
         // Load list of tweets we've already evaluated (either replied or decided to skip)
         $seenCacheKey = "auto_reply_seen_{$this->sourceType}_{$this->userId}";
@@ -340,6 +339,17 @@ class ProcessMentionAutoReplies implements ShouldQueue
                 continue;
             }
 
+            $authorUsername = $mention['author_username'] ?? null;
+            if (! TwitterService::canApiReplyToTweet($mentionText, $user->twitter_username, $authorUsername)) {
+                $seenSet[(string) $mentionId] = true;
+                Log::info('🤖 [auto-reply] Skipping tweet - X API reply not allowed (author must @mention you or it must be your post)', [
+                    'user_id' => $user->id,
+                    'source_type' => $this->sourceType,
+                    'tweet_id' => $mentionId,
+                ]);
+                continue;
+            }
+
             try {
                 // Step 1: let AI decide if this tweet actually needs a reply
                 $brandName = $user->twitter_name ?: $user->name ?: 'your personal brand';
@@ -440,10 +450,9 @@ class ProcessMentionAutoReplies implements ShouldQueue
                     'reply_length' => mb_strlen($replyText),
                 ]);
 
-                $response = $twitterService->createTweet(
+                $response = $twitterService->replyToKeywordTweet(
                     $replyText,
-                    [],
-                    $mentionId
+                    (string) $mentionId
                 );
 
                 Log::info('📥 ProcessMentionAutoReplies: received response from Twitter API', [

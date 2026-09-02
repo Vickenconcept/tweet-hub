@@ -14,15 +14,25 @@ class WhatsAppCommandParser
 
         $lower = strtolower($text);
 
+        $compound = $this->parseCompoundIntent($text);
+        if ($compound !== null) {
+            return $compound;
+        }
+
         if (in_array($lower, ['help', 'commands', '?'], true)) {
             return ['action' => 'help'];
         }
 
-        if (preg_match('/^(help\s+shortcuts|shortcuts|command\s+codes?)$/i', $text)) {
+        if (preg_match('/^(help\s+shortcuts|shortcuts?|command\s+codes?)$/i', $text)) {
             return ['action' => 'help_shortcuts'];
         }
 
-        if (preg_match('/^(what can you do|what can i do|how does this work|how do i use this|menu)$/i', $text)) {
+        if (in_array($lower, ['stuck', 'lost', 'confused', 'menu', 'options'], true)
+            || preg_match('/^(i\s)?(don\'t|do not)\s+know$/i', $text)) {
+            return ['action' => 'help'];
+        }
+
+        if (preg_match('/^(what can you do|what can i do|how does this work|how do i use this)$/i', $text)) {
             return ['action' => 'help'];
         }
 
@@ -52,13 +62,17 @@ class WhatsAppCommandParser
             return ['action' => 'queue'];
         }
 
+        if ($this->isIdeasFollowUp($text)) {
+            return ['action' => 'ideas', 'follow_up' => true];
+        }
+
         if ($lower === 'ideas') {
-            return ['action' => 'ideas'];
+            return $this->parseIdeasRequest($text);
         }
 
         if (preg_match('/^(give me |get )?(some )?(post )?ideas?$/i', $text)
             || preg_match('/^ideas?\s+for\s+(my )?posts?$/i', $text)) {
-            return ['action' => 'ideas'];
+            return $this->parseIdeasRequest($text);
         }
 
         if ($lower === 'drafts') {
@@ -219,18 +233,6 @@ class WhatsAppCommandParser
             return ['action' => 'thread', 'parts' => $parts];
         }
 
-        if (preg_match('/^bookmark:\s*(.+)$/is', $text, $matches)) {
-            return ['action' => 'bookmark', 'url' => trim($matches[1])];
-        }
-
-        if ($lower === 'bookmarks') {
-            return ['action' => 'bookmarks'];
-        }
-
-        if (preg_match('/^(show|list)\s+(my\s+)?bookmarks?$/i', $text)) {
-            return ['action' => 'bookmarks'];
-        }
-
         if (preg_match('/^(add|track)\s+keyword\s+(.+)$/i', $text, $matches)) {
             return ['action' => 'add_keyword', 'keyword' => trim($matches[2])];
         }
@@ -277,7 +279,7 @@ class WhatsAppCommandParser
 
         if ($this->matchesIntent($lower, ['ideas'], ['idea', 'ideas', 'what should i post', 'what can i post', 'post about', 'content ideas', 'something to post'])
             || preg_match('/\b(what|give me|suggest|need).*\b(post|tweet|content|ideas?)\b/i', $text)) {
-            return ['action' => 'ideas'];
+            return $this->parseIdeasRequest($text);
         }
 
         if ($this->matchesIntent($lower, ['keywords'], ['keyword', 'keywords', 'tracking', 'monitoring'])
@@ -301,10 +303,6 @@ class WhatsAppCommandParser
 
         if ($this->matchesIntent($lower, ['assets'], ['assets', 'images', 'media library', 'my images'])) {
             return ['action' => 'assets'];
-        }
-
-        if ($this->matchesIntent($lower, ['bookmarks'], ['bookmark', 'bookmarks', 'saved tweets'])) {
-            return ['action' => 'bookmarks'];
         }
 
         if ($this->matchesIntent($lower, ['help'], ['help', 'what can you do', 'what do you do', 'how does this work', 'how do i use', 'commands', 'menu'])) {
@@ -363,5 +361,165 @@ class WhatsAppCommandParser
         }
 
         return false;
+    }
+
+    protected function parseIdeasRequest(string $text): array
+    {
+        $result = ['action' => 'ideas'];
+        $topic = $this->extractIdeasTopic($text);
+
+        if ($topic !== null && $topic !== '') {
+            $result['topic'] = $topic;
+        }
+
+        return $result;
+    }
+
+    protected function extractIdeasTopic(string $text): ?string
+    {
+        $patterns = [
+            '/\b(?:post|tweet|content)\s+ideas?\s+(?:about|for|on|regarding)\s+(.+)/iu',
+            '/\bideas?\s+(?:about|for|on|regarding)\s+(.+)/iu',
+            '/\b(?:give me|get|suggest|need|want)\s+(?:some\s+)?(?:post|tweet|content\s+)?ideas?\s+(?:about|for|on|regarding)\s+(.+)/iu',
+            '/\bwhat\s+(?:should|can)\s+i\s+post\s+(?:about|on)\s+(.+)/iu',
+            '/\bi(?:\'m| am)\s+(?:a|an)\s+(.+?)(?:\s*[,.\!]|\s+(?:give|get|suggest|need|want|can you))/iu',
+            '/\b(?:give|get|suggest|need|want).*\bideas?\b.*\bi(?:\'m| am)\s+(?:a|an)\s+(.+)/iu',
+            '/\b(?:as|being)\s+(?:a|an)\s+(.+?)(?:\s*[,.\!]|\s+(?:give|get|suggest|need|want))/iu',
+            '/\b(?:posts?|tweets?|something)\s+(?:about|on|for)\s+(.+)/iu',
+            '/\bi(?:\'m| am)\s+(?:a|an)\s+([^.!\n,]+)/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text, $matches)) {
+                $topic = $this->cleanIdeasTopic($matches[1]);
+                if ($topic !== null) {
+                    return $topic;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    protected function cleanIdeasTopic(string $topic): ?string
+    {
+        $topic = trim($topic);
+        $topic = preg_replace('/\s*(please|thanks|thank you|right now|today)[.!?\s]*$/iu', '', $topic);
+        $topic = trim($topic, " \t\n\r\0\x0B.,!?\"'");
+
+        if ($topic === '' || mb_strlen($topic) < 2 || mb_strlen($topic) > 200) {
+            return null;
+        }
+
+        if (preg_match('/^(ideas?|posts?|tweets?)$/iu', $topic)) {
+            return null;
+        }
+
+        return $topic;
+    }
+
+    protected function isIdeasFollowUp(string $text): bool
+    {
+        $lower = strtolower(trim($text));
+
+        return (bool) preg_match(
+            '/^(more ideas?|give me more|another (one|batch|set)|more please|\d+\s+more|few more|some more)$/i',
+            $lower
+        );
+    }
+
+    protected function parseCompoundIntent(string $text): ?array
+    {
+        if (preg_match(
+            '/\b(?:create|write|make|compose|draft|generate)\s+(?:a\s+)?(?:post|tweet)\s+about\s+(.+?)\s+(?:then|and)\s+schedul(?:e|le)(?:\s+it)?(?:\s+(?:by|at|for))?\s+(.+)/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'create_and_schedule',
+                'topic' => $this->cleanCompoundTopic($matches[1]),
+                'when' => trim($matches[2]),
+            ];
+        }
+
+        if (preg_match(
+            '/\bschedule\s+(?:a\s+)?(?:post|tweet)\s+about\s+(.+?)\s+(?:at|by|for)\s+(.+)/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'create_and_schedule',
+                'topic' => $this->cleanCompoundTopic($matches[1]),
+                'when' => trim($matches[2]),
+            ];
+        }
+
+        if (preg_match(
+            '/\b(?:alright|ok(?:ay)?|yes|yeah|sure|please|go ahead)?[,.\s]*(?:post|publish|tweet)\s+(?:the\s+)?(?:(first|second|third|\d+(?:st|nd|rd|th)?)\s+)?(?:idea|one)(?:\s+you\s+(?:generated|gave|sent))?\b/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'post_idea',
+                'index' => $this->wordToIndex($matches[1] ?? 'first'),
+            ];
+        }
+
+        if (preg_match('/^post\s+idea\s+(\d+)\b/iu', $text, $matches)) {
+            return [
+                'action' => 'post_idea',
+                'index' => max(1, (int) $matches[1]),
+            ];
+        }
+
+        if (preg_match(
+            '/\bschedul(?:e|le)\s+(?:the\s+)?(?:(first|second|third|\d+(?:st|nd|rd|th)?)\s+)?idea(?:\s+(?:at|by|for))?\s+(.+)/iu',
+            $text,
+            $matches
+        )) {
+            return [
+                'action' => 'schedule_idea',
+                'index' => $this->wordToIndex($matches[1] ?? 'first'),
+                'when' => trim($matches[2]),
+            ];
+        }
+
+        if (preg_match('/^follow\s+(@?[A-Za-z0-9_]{1,15})\b/iu', $text, $matches)) {
+            return ['action' => 'follow', 'target' => ltrim($matches[1], '@')];
+        }
+
+        if (preg_match('/^unfollow\s+(@?[A-Za-z0-9_]{1,15})\b/iu', $text, $matches)) {
+            return ['action' => 'unfollow', 'target' => ltrim($matches[1], '@')];
+        }
+
+        if (preg_match('/^(?:retweet|rt)\s+(\d+)\b/iu', $text, $matches)) {
+            return ['action' => 'retweet', 'index' => max(1, (int) $matches[1])];
+        }
+
+        if (preg_match('/^like\s+(\d+)\b/iu', $text, $matches)) {
+            return ['action' => 'like', 'index' => max(1, (int) $matches[1])];
+        }
+
+        return null;
+    }
+
+    protected function cleanCompoundTopic(string $topic): string
+    {
+        $topic = trim($topic);
+        $topic = preg_replace('/\s*(please|thanks|thank you)[.!?\s]*$/iu', '', $topic);
+
+        return trim($topic, " \t\n\r\0\x0B.,!?\"'");
+    }
+
+    protected function wordToIndex(string $word): int
+    {
+        $word = strtolower(trim($word));
+
+        return match ($word) {
+            'first', '1', '1st' => 1,
+            'second', '2', '2nd' => 2,
+            'third', '3', '3rd' => 3,
+            default => max(1, (int) preg_replace('/\D/', '', $word) ?: 1),
+        };
     }
 }

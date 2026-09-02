@@ -53,94 +53,40 @@ class ProcessScheduledThread implements ShouldQueue
                 'post_ids' => $threadPosts->pluck('id')->toArray(),
             ]);
 
-            $settings = [
-                'account_id' => $user->twitter_account_id,
-                'access_token' => $user->twitter_access_token,
-                'access_token_secret' => $user->twitter_access_token_secret,
-                'consumer_key' => config('services.twitter.api_key'),
-                'consumer_secret' => config('services.twitter.api_key_secret'),
-                'bearer_token' => config('services.twitter.bearer_token'),
-            ];
+            $twitter = new TwitterService($user);
 
-            $twitter = new TwitterService($settings);
-            $prevTweetId = null;
+            $texts = $threadPosts->pluck('content')->all();
+            $mediaByPart = [];
 
-            // Process each post in the thread sequentially
-            foreach ($threadPosts as $post) {
-                // Update status to processing
-                $post->update(['status' => 'processing']);
-
+            foreach ($threadPosts as $index => $post) {
                 $mediaIds = [];
 
-                // Process media if any
-                if (!empty($post->media)) {
-                    Log::info('Processing media for thread post', [
-                        'post_id' => $post->id,
-                        'user_id' => $user->id,
-                        'media_codes' => $post->media,
-                    ]);
-
+                if (! empty($post->media)) {
                     foreach ($post->media as $code) {
                         $asset = Asset::where('user_id', $user->id)->where('code', $code)->first();
                         if ($asset) {
-                            $mediaId = $twitter->uploadLocalMedia(storage_path('app/public/' . $asset->path));
+                            $mediaId = $twitter->uploadLocalMedia(storage_path('app/public/'.$asset->path));
                             if ($mediaId) {
                                 $mediaIds[] = $mediaId;
-                                Log::info('Media uploaded successfully for thread post', [
-                                    'post_id' => $post->id,
-                                    'user_id' => $user->id,
-                                    'asset_code' => $code,
-                                    'media_id' => $mediaId,
-                                ]);
                             }
                         }
                     }
                 }
 
-                // Post to Twitter
-                Log::info('Posting thread post to Twitter', [
-                    'post_id' => $post->id,
-                    'user_id' => $user->id,
-                    'content' => $post->content,
-                    'media_ids' => $mediaIds,
-                    'is_reply' => $prevTweetId ? true : false,
-                    'reply_to_tweet_id' => $prevTweetId,
-                ]);
-
-                if ($prevTweetId) {
-                    // This is a reply to the previous tweet
-                    $response = $twitter->createTweet($post->content, $mediaIds, $prevTweetId);
-                } else {
-                    // This is the first tweet in the thread
-                    $response = $twitter->createTweet($post->content, $mediaIds);
+                if ($mediaIds !== []) {
+                    $mediaByPart[$index] = $mediaIds;
                 }
+            }
 
-                Log::info('Twitter API response for thread post', [
-                    'post_id' => $post->id,
-                    'user_id' => $user->id,
-                    'response' => $response,
-                ]);
+            $response = $twitter->createThread($texts, $mediaByPart);
+            $tweetIds = $response->data->tweet_ids ?? [$response->data->id ?? null];
 
-                // Mark as sent and store Twitter post ID
+            foreach ($threadPosts as $index => $post) {
                 $post->update([
                     'status' => 'sent',
                     'sent_at' => now(),
-                    'twitter_post_id' => $response->data->id ?? null
+                    'twitter_post_id' => $tweetIds[$index] ?? null,
                 ]);
-
-                // Store the Twitter post ID for the next iteration
-                $prevTweetId = $response->data->id ?? null;
-
-                Log::info('Thread post marked as sent', [
-                    'post_id' => $post->id,
-                    'user_id' => $user->id,
-                    'twitter_post_id' => $response->data->id ?? null,
-                ]);
-
-                // Small delay between posts to ensure proper threading
-                if ($threadPosts->last()->id !== $post->id) {
-                    sleep(2);
-                }
             }
 
             Log::info('Thread processing completed successfully', [

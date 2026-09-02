@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\WhatsAppCommandLog;
 use App\Services\WhatsApp\WhatsAppCommandExecutor;
 use App\Services\WhatsApp\WhatsAppIntentResolver;
+use App\Services\WhatsApp\WhatsAppUserMessages;
 use App\Services\ZernioService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -82,7 +83,7 @@ class ProcessWhatsAppCommand implements ShouldQueue
             $this->deliverReply(
                 $zernio,
                 $log,
-                '⏳ Rate limit reached (30 commands/hour). Try again later.',
+                WhatsAppUserMessages::tooBusyTryLater(),
                 failedStatus: true,
                 error: 'rate_limited',
             );
@@ -224,10 +225,11 @@ class ProcessWhatsAppCommand implements ShouldQueue
 
     protected function isRateLimited(User $user): bool
     {
+        $limit = max(1, (int) config('services.whatsapp.commands_per_hour', 60));
         $key = 'whatsapp_rate_'.$user->id;
         $count = (int) Cache::get($key, 0);
 
-        if ($count >= 30) {
+        if ($count >= $limit) {
             return true;
         }
 

@@ -35,15 +35,6 @@ return [
         ],
     ],
 
-    'twitter' => [
-        'api_key' => env('X_API_KEY'),
-        'api_key_secret' => env('X_API_KEY_SECRET'),
-        'access_token' => env('X_ACCESS_TOKEN'),
-        'access_token_secret' => env('X_ACCESS_TOKEN_SECRET'),
-        'bearer_token' => env('X_BEARER_TOKEN'),
-        'callback_url' => env('X_CALLBACK_URL'),
-    ],
-
     'cloudinary' => [
         'cloud_name' => env('CLOUDINARY_CLOUD_NAME'),
         'api_key' => env('CLOUDINARY_API_KEY'),
@@ -62,6 +53,10 @@ return [
         'timeout' => env('ZERNIO_TIMEOUT', 30),
         'connect_timeout' => env('ZERNIO_CONNECT_TIMEOUT', 15),
         'retry_attempts' => env('ZERNIO_RETRY_ATTEMPTS', 3),
+    ],
+
+    'whatsapp' => [
+        'commands_per_hour' => (int) env('WHATSAPP_COMMANDS_PER_HOUR', 60),
     ],
 
 ];

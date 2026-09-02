@@ -137,51 +137,32 @@ class TwitterSettingsComponent extends Component
             return;
         }
 
-        $twitterAccount = TwitterAccount::where('user_id', $user->id)->first();
-
-        if (!$twitterAccount || !$twitterAccount->isConfigured()) {
-            $this->testTweetError = 'Please configure your Twitter API credentials first.';
+        if (! $user->isTwitterConnected()) {
+            $this->testTweetError = 'Connect your X account first.';
             $this->testTweetLoading = false;
+
             return;
         }
 
         try {
-            $settings = $twitterAccount->getTwitterServiceSettings();
-            $twitterService = new TwitterService($settings);
+            $twitterService = new TwitterService($user);
 
             $response = $twitterService->createTweet($this->testTweetText);
 
             if ($response && isset($response->data)) {
                 $this->testTweetSuccess = true;
                 $this->testTweetText = '';
-                $this->successMessage = 'Test tweet sent successfully! Tweet ID: ' . ($response->data->id ?? 'unknown');
+                $this->successMessage = 'Test tweet sent successfully! Tweet ID: '.($response->data->id ?? 'unknown');
             } else {
                 $this->testTweetError = 'Failed to send test tweet. No response data.';
             }
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            $response = $e->getResponse();
-            $statusCode = $response ? $response->getStatusCode() : null;
-            $body = $response ? $response->getBody()->getContents() : null;
-
-            Log::error('Test tweet failed (ClientException)', [
-                'user_id' => $user->id,
-                'status_code' => $statusCode,
-                'error_body' => $body,
-            ]);
-
-            if ($statusCode === 401 || $statusCode === 403) {
-                $this->testTweetError = 'Authentication failed. Please check your API credentials.';
-            } elseif ($statusCode === 429) {
-                $this->testTweetError = 'Rate limit exceeded. Please try again later.';
-            } else {
-                $this->testTweetError = 'Failed to send test tweet. Status: ' . $statusCode;
-            }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Test tweet failed', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
             ]);
-            $this->testTweetError = 'Failed to send test tweet: ' . $e->getMessage();
+
+            $this->testTweetError = 'Failed to send test tweet: '.$e->getMessage();
         } finally {
             $this->testTweetLoading = false;
         }

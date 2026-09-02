@@ -57,7 +57,7 @@ New settings section: **WhatsApp Remote Control**
 - Only **verified** numbers can run commands
 - Require **Twitter/X connected** before any publish/engage action
 - Optional **PIN** for destructive commands (`delete`, `disconnect`)
-- Rate limits per user (e.g. 30 commands/hour)
+- Message cap per user (default 60/hour, set `WHATSAPP_COMMANDS_PER_HOUR` in `.env`)
 - Log every command in `whatsapp_command_logs` (audit trail)
 - Verify Zernio webhook signatures (`X-Zernio-Signature`)
 
