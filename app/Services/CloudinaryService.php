@@ -11,7 +11,33 @@ class CloudinaryService
 
     public function __construct()
     {
-        $this->cloudinary = new Cloudinary();
+        $this->cloudinary = $this->makeClient();
+    }
+
+    protected function makeClient(): Cloudinary
+    {
+        $url = config('services.cloudinary.url');
+        if (is_string($url) && $url !== '') {
+            return new Cloudinary($url);
+        }
+
+        $cloudName = config('services.cloudinary.cloud_name');
+        $apiKey = config('services.cloudinary.api_key');
+        $apiSecret = config('services.cloudinary.api_secret');
+
+        if ($cloudName && $apiKey && $apiSecret) {
+            return new Cloudinary([
+                'cloud' => [
+                    'cloud_name' => $cloudName,
+                    'api_key' => $apiKey,
+                    'api_secret' => $apiSecret,
+                ],
+            ]);
+        }
+
+        throw new \RuntimeException(
+            'Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.'
+        );
     }
 
     /**
