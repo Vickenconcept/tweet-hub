@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\User;
 use App\Models\WhatsAppCommandLog;
+use App\Services\WhatsApp\WhatsAppActionHints;
 use App\Services\WhatsApp\WhatsAppCommandExecutor;
 use App\Services\WhatsApp\WhatsAppIntentResolver;
 use App\Services\WhatsApp\WhatsAppOutboundMessage;
@@ -306,9 +307,12 @@ class ProcessWhatsAppCommand implements ShouldQueue
             '3. Enter your number and verify',
             '',
             "Then message {$bot} with commands like:",
-            'start',
-            'post: Hello world!',
-            'help',
+        ]).WhatsAppActionHints::actions('➡️ *Try typing:*', [
+            ['icon' => '🚀', 'cmd' => 'start'],
+            ['icon' => '✍️', 'cmd' => 'post: Hello world!'],
+            ['icon' => '❓', 'cmd' => 'help'],
+        ])."\n\n".implode("\n", [
+            '👇 Once you\'re linked, type *help* to start the conversation and see everything you can do.',
         ]);
     }
 
