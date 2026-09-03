@@ -144,7 +144,12 @@ class WhatsAppCommandExecutor
             if ($caption !== '') {
                 $caption = $this->assetAttachments->normalizePhotoCaption($caption);
 
-                $parsed = $intentResolver->resolve($caption, ['has_attached_image' => true]);
+                if (! preg_match('/\bwith\s+(?:the|this|my)\s+image\b|\bwith\s+image\s+\d+\b|^\s*schedule:/iu', $caption)
+                    && preg_match('/^(post|schedule)\b/iu', $caption)) {
+                    $caption .= ' with the image';
+                }
+
+                $parsed = $intentResolver->resolve($caption);
                 $log->update([
                     'command' => $caption,
                     'parsed_action' => $parsed['action'] ?? 'unknown',
@@ -1393,38 +1398,6 @@ class WhatsAppCommandExecutor
         $tz = $user->preferredTimezone();
         $when = trim(strtolower($when));
         $when = str_replace('.', ':', $when);
-        $when = preg_replace('/\s+/u', ' ', $when) ?? $when;
-
-        if (preg_match('/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})(?:\s+(.+))?$/u', $when, $m)) {
-            $day = (int) $m[1];
-            $month = (int) $m[2];
-            $year = (int) $m[3];
-            if ($year < 100) {
-                $year += 2000;
-            }
-
-            $scheduled = now($tz)->setDate($year, $month, $day)->startOfDay();
-
-            $timePart = trim((string) ($m[4] ?? ''));
-            if ($timePart !== '' && preg_match('/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i', $timePart, $t)) {
-                $hour = (int) $t[1];
-                $minute = isset($t[2]) ? (int) $t[2] : 0;
-                $ampm = strtolower((string) ($t[3] ?? ''));
-                if ($ampm === 'pm' && $hour < 12) {
-                    $hour += 12;
-                }
-                if ($ampm === 'am' && $hour === 12) {
-                    $hour = 0;
-                }
-                $scheduled = $scheduled->setTime($hour, $minute);
-            }
-
-            if ($scheduled->lessThanOrEqualTo(now($tz))) {
-                throw new \RuntimeException('Schedule time must be in the future.');
-            }
-
-            return $scheduled->timezone(config('app.timezone'));
-        }
 
         if (preg_match('/^(\d{1,2}):(\d{2})\s*(am|pm)$/', $when, $m)) {
             $hour = (int) $m[1];

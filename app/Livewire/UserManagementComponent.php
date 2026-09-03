@@ -94,13 +94,13 @@ class UserManagementComponent extends Component
 
             $this->lastRefresh = now()->format('M j, Y g:i A');
 
-            Cache::put($cacheKey, [
+                Cache::put($cacheKey, [
                 'profile' => $this->profile,
                 'accountSummary' => $this->accountSummary,
                 'statsHistory' => $this->statsHistory,
                 'dateRange' => $this->dateRange,
                 'timestamp' => $this->lastRefresh,
-            ], 14400);
+                ], 14400);
 
             $this->successMessage = 'Follower data refreshed successfully.';
         } catch (\Exception $e) {
@@ -224,6 +224,6 @@ class UserManagementComponent extends Component
 
     public function render()
     {
-        return view('livewire.user-management-component');
+        return view('livewire.user-management-component'); 
     }
 }

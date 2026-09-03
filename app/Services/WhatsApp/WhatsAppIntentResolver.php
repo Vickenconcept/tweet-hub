@@ -9,20 +9,15 @@ class WhatsAppIntentResolver
     public function __construct(
         protected WhatsAppCommandParser $commandParser,
         protected WhatsAppNaturalLanguageParser $naturalLanguageParser,
-        protected WhatsAppConversationalIntentParser $conversationalParser,
-        protected WhatsAppIntentPlanner $intentPlanner,
     ) {}
 
     /**
      * Resolve user message → bot action.
      * 1. Exact commands (post:, verify, etc.) — instant, no AI
      * 2. Local natural-language patterns — instant, no AI
-     * 3. Conversational parser — messy real-world captions
-     * 4. OpenAI intent parsing — for free-form questions
-     *
-     * @param  array{has_attached_image?: bool}  $context
+     * 3. OpenAI intent parsing — for free-form questions
      */
-    public function resolve(string $text, array $context = []): array
+    public function resolve(string $text): array
     {
         $text = trim($text);
 
@@ -30,41 +25,28 @@ class WhatsAppIntentResolver
             return ['action' => 'unknown', 'raw' => $text];
         }
 
-        if ($this->looksLikeConversationalPostSchedule($text)) {
-            $conversational = $this->conversationalParser->parse($text, $context);
-            if ($conversational !== null) {
-                return $this->intentPlanner->plan($conversational, $context) + ['resolved_by' => 'conversational'];
-            }
-        }
-
         if ($this->looksMultiStep($text) && $this->shouldUseAi($text)) {
             $aiParsed = $this->naturalLanguageParser->parse($text);
             if ($aiParsed) {
-                return $this->intentPlanner->plan($aiParsed, $context) + ['resolved_by' => 'ai'];
+                return $aiParsed + ['resolved_by' => 'ai'];
             }
         }
 
         if ($this->isExplicitCommand($text)) {
             $parsed = $this->commandParser->parse($text);
-            if (($parsed['action'] ?? '') !== 'unknown') {
-                return $this->intentPlanner->plan($parsed, $context) + ['resolved_by' => 'command'];
-            }
+
+            return $parsed + ['resolved_by' => 'command'];
         }
 
         $parsed = $this->commandParser->parse($text);
         if (($parsed['action'] ?? '') !== 'unknown') {
-            return $this->intentPlanner->plan($parsed, $context) + ['resolved_by' => 'local'];
-        }
-
-        $conversational = $this->conversationalParser->parse($text, $context);
-        if ($conversational !== null) {
-            return $this->intentPlanner->plan($conversational, $context) + ['resolved_by' => 'conversational'];
+            return $parsed + ['resolved_by' => 'local'];
         }
 
         if ($this->shouldUseAi($text)) {
             $aiParsed = $this->naturalLanguageParser->parse($text);
             if ($aiParsed) {
-                return $this->intentPlanner->plan($aiParsed, $context) + ['resolved_by' => 'ai'];
+                return $aiParsed + ['resolved_by' => 'ai'];
             }
 
             Log::warning('WhatsApp AI intent unavailable; using friendly fallback', [
@@ -143,11 +125,5 @@ class WhatsAppIntentResolver
 
         return str_word_count($lower) >= 8
             && preg_match('/\b(?:schedule|post|publish|create|write|generate|ideas?)\b/i', $text);
-    }
-
-    protected function looksLikeConversationalPostSchedule(string $text): bool
-    {
-        return (bool) preg_match('/\bschedul(?:e|le)\b/i', $text)
-            || (bool) preg_match('/\b(?:post|publish|tweet)\s+(?:this|it)\b/i', $text);
     }
 }
